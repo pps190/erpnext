@@ -15,7 +15,7 @@ sudo apt update && sudo apt install redis-server libcups2-dev
 
 pip install frappe-bench
 
-frappeuser=${FRAPPE_USER:-"frappe"}
+frappeuser=${FRAPPE_USER:-"pps190"}
 frappebranch=${FRAPPE_BRANCH:-${GITHUB_BASE_REF:-${GITHUB_REF##*/}}}
 
 git clone "https://github.com/${frappeuser}/frappe" --branch "${frappebranch}" --depth 1
