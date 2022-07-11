@@ -18,7 +18,7 @@ on:
       user:
         description: 'user'
         required: true
-        default: 'frappe'
+        default: 'pps190'
         type: string
       branch:
         description: 'Branch name'
