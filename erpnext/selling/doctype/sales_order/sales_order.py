@@ -11,6 +11,7 @@ from frappe.contacts.doctype.address.address import get_company_address
 from frappe.desk.notifications import clear_doctype_notifications
 from frappe.model.mapper import get_mapped_doc
 from frappe.model.utils import get_fetch_values
+from frappe.query_builder import DocType
 from frappe.utils import add_days, cint, cstr, flt, get_link_to_form, getdate, nowdate, strip_html
 
 from erpnext.accounts.doctype.sales_invoice.sales_invoice import (
@@ -18,7 +19,6 @@ from erpnext.accounts.doctype.sales_invoice.sales_invoice import (
 	update_linked_doc,
 	validate_inter_company_party,
 )
-from erpnext.accounts.party import get_party_account
 from erpnext.controllers.selling_controller import SellingController
 from erpnext.manufacturing.doctype.production_plan.production_plan import (
 	get_items_for_material_requests,
@@ -26,7 +26,7 @@ from erpnext.manufacturing.doctype.production_plan.production_plan import (
 from erpnext.selling.doctype.customer.customer import check_credit_limit
 from erpnext.setup.doctype.item_group.item_group import get_item_group_defaults
 from erpnext.stock.doctype.item.item import get_item_defaults
-from erpnext.stock.get_item_details import get_default_bom, get_price_list_rate
+from erpnext.stock.get_item_details import get_default_bom
 from erpnext.stock.stock_balance import get_reserved_qty, update_bin_qty
 
 form_grid_templates = {"items": "templates/form_grid/item_grid.html"}
@@ -127,15 +127,20 @@ class SalesOrder(SellingController):
 		)
 		return ret
 
-	def validate_sales_mntc_quotation(self):
+	def validate_sales_order_type(self):
 		for d in self.get("items"):
 			if d.prevdoc_docname:
-				res = frappe.db.sql(
-					"select name from `tabQuotation` where name=%s and order_type = %s",
-					(d.prevdoc_docname, self.order_type),
-				)
+				dt = DocType(d.prevdoc_doctype)
+				res = (
+					frappe.qb.from_(dt)
+					.select(dt.name)
+					.where(dt.name == d.prevdoc_docname)
+					.where(dt.order_type == self.order_type)
+				).run()
 				if not res:
-					frappe.msgprint(_("Quotation {0} not of type {1}").format(d.prevdoc_docname, self.order_type))
+					frappe.msgprint(
+						_("{0} {1} not of type {2}").format(d.prevdoc_doctype, d.prevdoc_docname, self.order_type)
+					)
 
 	def validate_delivery_date(self):
 		if self.order_type == "Sales" and not self.skip_delivery_note:
@@ -158,7 +163,7 @@ class SalesOrder(SellingController):
 			else:
 				frappe.throw(_("Please enter Delivery Date"))
 
-		self.validate_sales_mntc_quotation()
+		self.validate_sales_order_type()
 
 	def validate_proj_cust(self):
 		if self.project and self.customer_name:
@@ -189,12 +194,10 @@ class SalesOrder(SellingController):
 				)
 
 	def validate_with_previous_doc(self):
+		(prev_doctype,) = set([item.prevdoc_doctype for item in self.items])
 		super(SalesOrder, self).validate_with_previous_doc(
-			{"Quotation": {"ref_dn_field": "prevdoc_docname", "compare_fields": [["company", "="]]}}
+			{prev_doctype: {"ref_dn_field": "prevdoc_docname", "compare_fields": [["company", "="]]}}
 		)
-
-		if cint(frappe.db.get_single_value("Selling Settings", "maintain_same_sales_rate")):
-			self.validate_rate_with_reference_doc([["Quotation", "prevdoc_docname", "quotation_item"]])
 
 	def update_enquiry_status(self, prevdoc, flag):
 		enq = frappe.db.sql(
@@ -205,11 +208,11 @@ class SalesOrder(SellingController):
 			frappe.db.sql("update `tabOpportunity` set status = %s where name=%s", (flag, enq[0][0]))
 
 	def update_prevdoc_status(self, flag=None):
-		for quotation in set(d.prevdoc_docname for d in self.get("items")):
-			if quotation:
-				doc = frappe.get_doc("Quotation", quotation)
-				if doc.docstatus.is_cancelled():
-					frappe.throw(_("Quotation {0} is cancelled").format(quotation))
+		for dt, dn in set((d.prevdoc_doctype, d.prevdoc_docname) for d in self.get("items")):
+			if dn:
+				doc = frappe.get_doc(dt, dn)
+				if doc.docstatus == 2:
+					frappe.throw(_("{0} {1} is cancelled").format(dt, dn))
 
 				doc.set_status(update=True)
 
@@ -249,7 +252,7 @@ class SalesOrder(SellingController):
 		self.update_project()
 		self.update_prevdoc_status("cancel")
 
-		self.db_set("status", "Cancelled")
+		frappe.db.set(self, "status", "Cancelled")
 
 		self.update_blanket_order()
 
@@ -590,23 +593,6 @@ def make_material_request(source_name, target_doc=None):
 		target.qty = qty - requested_item_qty.get(source.name, 0)
 		target.stock_qty = flt(target.qty) * flt(target.conversion_factor)
 
-		args = target.as_dict().copy()
-		args.update(
-			{
-				"company": source_parent.get("company"),
-				"price_list": frappe.db.get_single_value("Buying Settings", "buying_price_list"),
-				"currency": source_parent.get("currency"),
-				"conversion_rate": source_parent.get("conversion_rate"),
-			}
-		)
-
-		target.rate = flt(
-			get_price_list_rate(args=args, item_doc=frappe.get_cached_doc("Item", target.item_code)).get(
-				"price_list_rate"
-			)
-		)
-		target.amount = target.qty * target.rate
-
 	doc = get_mapped_doc(
 		"Sales Order",
 		source_name,
@@ -647,7 +633,6 @@ def make_project(source_name, target_doc=None):
 				"field_map": {
 					"name": "sales_order",
 					"base_grand_total": "estimated_costing",
-					"net_total": "total_sales_amount",
 				},
 			},
 		},
@@ -748,8 +733,6 @@ def make_sales_invoice(source_name, target_doc=None, ignore_permissions=False):
 		# set the redeem loyalty points if provided via shopping cart
 		if source.loyalty_points and source.order_type == "Shopping Cart":
 			target.redeem_loyalty_points = 1
-
-		target.debit_to = get_party_account("Customer", source.customer, source.company)
 
 	def update_item(source, target, source_parent):
 		target.amount = flt(source.amount) - flt(source.billed_amt)
@@ -904,9 +887,6 @@ def get_events(start, end, filters=None):
 @frappe.whitelist()
 def make_purchase_order_for_default_supplier(source_name, selected_items=None, target_doc=None):
 	"""Creates Purchase Order for each Supplier. Returns a list of doc objects."""
-
-	from erpnext.setup.utils import get_exchange_rate
-
 	if not selected_items:
 		return
 
@@ -915,20 +895,10 @@ def make_purchase_order_for_default_supplier(source_name, selected_items=None, t
 
 	def set_missing_values(source, target):
 		target.supplier = supplier
-		target.currency = frappe.db.get_value(
-			"Supplier", filters={"name": supplier}, fieldname=["default_currency"]
-		)
-		company_currency = frappe.db.get_value(
-			"Company", filters={"name": target.company}, fieldname=["default_currency"]
-		)
-
-		target.conversion_rate = get_exchange_rate(target.currency, company_currency, args="for_buying")
-
 		target.apply_discount_on = ""
 		target.additional_discount_percentage = 0.0
 		target.discount_amount = 0.0
 		target.inter_company_order_reference = ""
-		target.shipping_rule = ""
 
 		default_price_list = frappe.get_value("Supplier", supplier, "default_price_list")
 		if default_price_list:
@@ -1041,30 +1011,14 @@ def make_purchase_order(source_name, selected_items=None, target_doc=None):
 	]
 	items_to_map = list(set(items_to_map))
 
-	def is_drop_ship_order(target):
-		drop_ship = True
-		for item in target.items:
-			if not item.delivered_by_supplier:
-				drop_ship = False
-				break
-
-		return drop_ship
-
 	def set_missing_values(source, target):
 		target.supplier = ""
 		target.apply_discount_on = ""
 		target.additional_discount_percentage = 0.0
 		target.discount_amount = 0.0
 		target.inter_company_order_reference = ""
-		target.shipping_rule = ""
-
-		if is_drop_ship_order(target):
-			target.customer = source.customer
-			target.customer_name = source.customer_name
-			target.shipping_address = source.shipping_address_name
-		else:
-			target.customer = target.customer_name = target.shipping_address = None
-
+		target.customer = ""
+		target.customer_name = ""
 		target.run_method("set_missing_values")
 		target.run_method("calculate_taxes_and_totals")
 
