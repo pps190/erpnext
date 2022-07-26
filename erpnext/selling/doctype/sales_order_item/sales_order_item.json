@@ -69,8 +69,8 @@
   "warehouse_and_reference",
   "warehouse",
   "target_warehouse",
+  "prevdoc_doctype",
   "prevdoc_docname",
-  "quotation_item",
   "col_break4",
   "against_blanket_order",
   "blanket_order",
@@ -531,12 +531,12 @@
   },
   {
    "fieldname": "prevdoc_docname",
-   "fieldtype": "Link",
-   "label": "Quotation",
+   "fieldtype": "Dynamic Link",
+   "label": "Previous Docname",
    "no_copy": 1,
    "oldfieldname": "prevdoc_docname",
    "oldfieldtype": "Link",
-   "options": "Quotation",
+   "options": "prevdoc_doctype",
    "print_hide": 1,
    "read_only": 1,
    "search_index": 1
@@ -816,6 +816,12 @@
    "label": "Picked Qty (in Stock UOM)",
    "no_copy": 1,
    "read_only": 1
+  },
+  {
+   "fieldname": "prevdoc_doctype",
+   "fieldtype": "Link",
+   "label": "Previous Doctype",
+   "options": "DocType"
   },
   {
    "fieldname": "inter_transfer_reference_section",

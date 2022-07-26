@@ -247,7 +247,7 @@ def _make_sales_order(source_name, target_doc=None, ignore_permissions=False):
 			"Quotation": {"doctype": "Sales Order", "validation": {"docstatus": ["=", 1]}},
 			"Quotation Item": {
 				"doctype": "Sales Order Item",
-				"field_map": {"parent": "prevdoc_docname", "name": "quotation_item"},
+				"field_map": {"parent": "prevdoc_docname", "parenttype": "prevdoc_doctype"},
 				"postprocess": update_item,
 				"condition": lambda doc: doc.qty > 0,
 			},
