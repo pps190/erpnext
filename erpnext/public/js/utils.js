@@ -576,7 +576,11 @@ erpnext.utils.update_child_items = function(opts) {
 			"conversion_factor": d.conversion_factor,
 			"qty": d.qty,
 			"rate": d.rate,
-			"uom": d.uom
+			"uom": d.uom,
+			// Begin PPS Customization
+			"expected_delivery_date": d.expected_delivery_date,
+			"bo_proforma": d.bo_proforma,
+			// End PPS Customization
 		}
 	});
 
@@ -657,19 +661,29 @@ erpnext.utils.update_child_items = function(opts) {
 		in_list_view: 1,
 		label: __('Rate'),
 		precision: get_precision("rate")
+	}, {
+		fieldtype:'Date',
+		fieldname: 'expected_delivery_date',
+		in_list_view: 1,
+		label: 'ETA'
+	}, {
+		fieldtype: 'Data',
+		fieldname: 'bo_proforma',
+		label: 'BO Proforma',
 	}];
 
 	if (frm.doc.doctype == 'Sales Order' || frm.doc.doctype == 'Purchase Order' ) {
 		fields.splice(2, 0, {
 			fieldtype: 'Date',
 			fieldname: frm.doc.doctype == 'Sales Order' ? "delivery_date" : "schedule_date",
-			in_list_view: 1,
+			in_list_view: 0,
 			label: frm.doc.doctype == 'Sales Order' ? __("Delivery Date") : __("Reqd by date"),
 			reqd: 1
 		})
 		fields.splice(3, 0, {
 			fieldtype: 'Float',
 			fieldname: "conversion_factor",
+			in_list_view: 0,
 			label: __("Conversion Factor"),
 			precision: get_precision('conversion_factor')
 		})
