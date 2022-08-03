@@ -51,6 +51,10 @@ class ReceivablePayableReport(object):
 			if self.filters.report_date > getdate(nowdate())
 			else self.filters.report_date
 		)
+		# Begin PPS Customization
+		self.delivery_notes = frappe._dict()
+		self.billing_addresses = {}
+		# End PPS Customization
 
 	def run(self, args):
 		self.filters.update(args)
@@ -401,6 +405,27 @@ class ReceivablePayableReport(object):
 			row.currency = row.account_currency
 		else:
 			row.currency = self.company_currency
+		# Begin PPS Customization
+		row.address_display = self.get_billing_address(row.party)
+		# End PPS Customization
+
+	# Begin PPS Customization
+	def get_billing_address(self, party):
+		from frappe.contacts.doctype.address.address import get_address_display
+
+		address_display = self.billing_addresses.get(party)
+		if address_display is None:
+			address = frappe.db.get_list(
+				"Address",
+				filters=[["is_primary_address", "=", 1], ["Dynamic Link", "link_name", "=", party]],
+				fields=["name"],
+				pluck="name",
+			)
+			address_display = get_address_display(address.pop()) if address else ""
+			self.billing_addresses.update({party: address_display})
+		return address_display
+
+	# End PPS Customization
 
 	def allocate_outstanding_based_on_payment_terms(self, row):
 		self.get_payment_terms(row)
