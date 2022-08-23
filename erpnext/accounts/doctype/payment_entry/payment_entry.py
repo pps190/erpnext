@@ -1254,6 +1254,13 @@ def get_outstanding_reference_documents(args):
 				)
 		if d.voucher_type in ("Purchase Invoice"):
 			d["bill_no"] = frappe.db.get_value(d.voucher_type, d.voucher_no, "bill_no")
+		# Begin PPS Customization
+		if d.voucher_type in ("Sales Invoice"):
+			d["additional_note"] = frappe.get_all("Sales Invoice Item", filters={
+				"parent": d.voucher_no,
+				"parenttype": "Sales Invoice"
+			}, fields=["delivery_note"], pluck="delivery_note")[0]
+		# End PPS Customization
 
 	# Get all SO / PO which are not fully billed or against which full advance not paid
 	orders_to_be_billed = []
@@ -1278,6 +1285,15 @@ def get_outstanding_reference_documents(args):
 			company_currency,
 			condition=condition,
 		)
+
+		# Begin PPS Customization
+		for d in negative_outstanding_invoices:
+			if d.voucher_type in ("Sales Invoice"):
+				d["additional_note"] = frappe.get_all("Sales Invoice Item", filters={
+					"parent": d.voucher_no,
+					"parenttype": "Sales Invoice"
+				}, fields=["delivery_note"], pluck="delivery_note")[0]
+		# End PPS Customization
 
 	data = negative_outstanding_invoices + outstanding_invoices + orders_to_be_billed
 
