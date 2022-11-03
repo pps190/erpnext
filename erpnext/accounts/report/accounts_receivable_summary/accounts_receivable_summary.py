@@ -107,6 +107,7 @@ class AccountsReceivableSummary(ReceivablePayableReport):
 					"range5": 0.0,
 					"total_due": 0.0,
 					"sales_person": [],
+					"address_display": "",
 				}
 			),
 		)
@@ -121,6 +122,8 @@ class AccountsReceivableSummary(ReceivablePayableReport):
 		if row.sales_person:
 			self.party_total[row.party].sales_person.append(row.sales_person)
 
+		self.party_total[row.party]["address_display"] = self.get_billing_address(row.party)
+
 	def get_columns(self):
 		self.columns = []
 		self.add_column(
@@ -133,6 +136,8 @@ class AccountsReceivableSummary(ReceivablePayableReport):
 
 		if self.party_naming_by == "Naming Series":
 			self.add_column(_("{0} Name").format(self.party_type), fieldname="party_name", fieldtype="Data")
+
+		self.add_column(_("Address"), fieldname="address_display", fieldtype="Data")
 
 		credit_debit_label = "Credit Note" if self.party_type == "Customer" else "Debit Note"
 

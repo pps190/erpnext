@@ -1184,6 +1184,7 @@ def get_outstanding_reference_documents(args):
 
 	ple = qb.DocType("Payment Ledger Entry")
 	common_filter = []
+	posting_and_due_date = []
 
 	# confirm that Supplier is not blocked
 	if args.get("party_type") == "Supplier":
@@ -1224,7 +1225,7 @@ def get_outstanding_reference_documents(args):
 			condition += " and {0} between '{1}' and '{2}'".format(
 				fieldname, args.get(date_fields[0]), args.get(date_fields[1])
 			)
-			common_filter.append(ple[fieldname][args.get(date_fields[0]) : args.get(date_fields[1])])
+			posting_and_due_date.append(ple[fieldname][args.get(date_fields[0]) : args.get(date_fields[1])])
 
 	if args.get("company"):
 		condition += " and company = {0}".format(frappe.db.escape(args.get("company")))
@@ -1235,6 +1236,7 @@ def get_outstanding_reference_documents(args):
 		args.get("party"),
 		args.get("party_account"),
 		common_filter=common_filter,
+		posting_date=posting_and_due_date,
 		min_outstanding=args.get("outstanding_amt_greater_than"),
 		max_outstanding=args.get("outstanding_amt_less_than"),
 	)
@@ -1252,6 +1254,13 @@ def get_outstanding_reference_documents(args):
 				)
 		if d.voucher_type in ("Purchase Invoice"):
 			d["bill_no"] = frappe.db.get_value(d.voucher_type, d.voucher_no, "bill_no")
+		# Begin PPS Customization
+		if d.voucher_type in ("Sales Invoice"):
+			d["additional_note"] = frappe.get_all("Sales Invoice Item", filters={
+				"parent": d.voucher_no,
+				"parenttype": "Sales Invoice"
+			}, fields=["delivery_note"], pluck="delivery_note")[0]
+		# End PPS Customization
 
 	# Get all SO / PO which are not fully billed or against which full advance not paid
 	orders_to_be_billed = []
@@ -1276,6 +1285,15 @@ def get_outstanding_reference_documents(args):
 			company_currency,
 			condition=condition,
 		)
+
+		# Begin PPS Customization
+		for d in negative_outstanding_invoices:
+			if d.voucher_type in ("Sales Invoice"):
+				d["additional_note"] = frappe.get_all("Sales Invoice Item", filters={
+					"parent": d.voucher_no,
+					"parenttype": "Sales Invoice"
+				}, fields=["delivery_note"], pluck="delivery_note")[0]
+		# End PPS Customization
 
 	data = negative_outstanding_invoices + outstanding_invoices + orders_to_be_billed
 

@@ -7,6 +7,7 @@
  "field_order": [
   "reference_doctype",
   "reference_name",
+  "additional_info",
   "due_date",
   "bill_no",
   "payment_term",
@@ -99,12 +100,18 @@
    "label": "Exchange Gain/Loss",
    "options": "Company:company:default_currency",
    "read_only": 1
+  },
+  {
+   "description": "A custom column to show delivery note no.",
+   "fieldname": "additional_info",
+   "fieldtype": "Data",
+   "label": "Additional Info"
   }
  ],
  "index_web_pages_for_search": 1,
  "istable": 1,
  "links": [],
- "modified": "2021-09-26 17:06:55.597389",
+ "modified": "2022-08-23 14:37:34.565356",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Payment Entry Reference",
@@ -113,5 +120,6 @@
  "quick_entry": 1,
  "sort_field": "modified",
  "sort_order": "DESC",
+ "states": [],
  "track_changes": 1
 }

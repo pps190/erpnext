@@ -234,7 +234,7 @@ erpnext.stock.move_item = function (item, source, target, actual_qty, rate, call
 			label: __('Rate'),
 			fieldtype: 'Currency',
 			hidden: 1
-		},
+		}
 		],
 	});
 	dialog.show();
@@ -259,14 +259,43 @@ erpnext.stock.move_item = function (item, source, target, actual_qty, rate, call
 		dialog.get_field('target').refresh();
 	}
 
-	dialog.set_primary_action(__('Create Stock Entry'), function () {
+	function validate_values(dialog) {
 		if (source && (dialog.get_value("qty") == 0 || dialog.get_value("qty") > actual_qty)) {
 			frappe.msgprint(__("Quantity must be greater than zero, and less or equal to {0}", [actual_qty]));
-			return;
+			return false;
 		}
 
 		if (dialog.get_value("source") === dialog.get_value("target")) {
 			frappe.msgprint(__("Source and target warehouse must be different"));
+			return false;
+		}
+
+		return true;
+	}
+
+	dialog.set_primary_action(__('Create Stock Entry'), function () {
+		if (!validate_values(dialog)) {
+			return;
+		}
+
+		frappe.call({
+			method: "erpnext.stock.doctype.stock_entry.stock_entry_utils.make_stock_entry",
+			args: dialog.get_values(),
+			btn: dialog.get_primary_btn(),
+			freeze: true,
+			freeze_message: __("Creating Stock Entry"),
+			callback: function (r) {
+				frappe.show_alert(__('Stock Entry {0} created',
+					['<a href="/app/stock-entry/' + r.message.name + '">' + r.message.name + '</a>']));
+				dialog.hide();
+				callback(r);
+			}
+		});
+	});
+
+	dialog.set_secondary_action_label(__("Edit"));
+	dialog.set_secondary_action(function () {
+		if (!validate_values(dialog)) {
 			return;
 		}
 
