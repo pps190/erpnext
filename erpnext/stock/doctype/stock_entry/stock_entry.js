@@ -112,6 +112,10 @@ frappe.ui.form.on('Stock Entry', {
 			}
 		});
 		attach_bom_items(frm.doc.bom_no);
+
+		if(!check_should_not_attach_bom_items(frm.doc.bom_no)) {
+			erpnext.accounts.dimensions.update_dimension(frm, frm.doctype);
+		}
 	},
 
 	setup_quality_inspection: function(frm) {
@@ -129,7 +133,7 @@ frappe.ui.form.on('Stock Entry', {
 
 		let quality_inspection_field = frm.get_docfield("items", "quality_inspection");
 		quality_inspection_field.get_route_options_for_new_doc = function(row) {
-			if (frm.is_new()) return;
+			if (frm.is_new()) return {};
 			return {
 				"inspection_type": "Incoming",
 				"reference_type": frm.doc.doctype,
@@ -174,6 +178,8 @@ frappe.ui.form.on('Stock Entry', {
 					if(!items.length) {
 						items = frm.doc.items;
 					}
+
+					mr.work_order = frm.doc.work_order;
 					items.forEach(function(item) {
 						var mr_item = frappe.model.add_child(mr, 'items');
 						mr_item.item_code = item.item_code;
@@ -324,7 +330,11 @@ frappe.ui.form.on('Stock Entry', {
 		}
 
 		frm.trigger("setup_quality_inspection");
-		attach_bom_items(frm.doc.bom_no)
+		attach_bom_items(frm.doc.bom_no);
+
+		if(!check_should_not_attach_bom_items(frm.doc.bom_no)) {
+			erpnext.accounts.dimensions.update_dimension(frm, frm.doctype);
+		}
 	},
 
 	before_save: function(frm) {
@@ -583,18 +593,23 @@ frappe.ui.form.on('Stock Entry', {
 	},
 
 	add_to_transit: function(frm) {
-		if(frm.doc.add_to_transit && frm.doc.purpose=='Material Transfer') {
-			frm.set_value('to_warehouse', '');
+		if(frm.doc.purpose=='Material Transfer') {
+			var filters = {
+				'is_group': 0,
+				'company': frm.doc.company
+			}
+
+			if(frm.doc.add_to_transit){
+				filters['warehouse_type'] = 'Transit';
+				frm.set_value('to_warehouse', '');
+				frm.trigger('set_transit_warehouse');
+			}
+
 			frm.fields_dict.to_warehouse.get_query = function() {
 				return {
-					filters:{
-						'warehouse_type' : 'Transit',
-						'is_group': 0,
-						'company': frm.doc.company
-					}
+					filters:filters
 				};
 			};
-			frm.trigger('set_transit_warehouse');
 		}
 	},
 
@@ -618,6 +633,12 @@ frappe.ui.form.on('Stock Entry', {
 	purchase_order: (frm) => {
 		if (frm.doc.purchase_order) {
 			frm.set_value("subcontracting_order", "");
+			erpnext.utils.map_current_doc({
+				method: 'erpnext.stock.doctype.stock_entry.stock_entry.get_items_from_subcontract_order',
+				source_name: frm.doc.purchase_order,
+				target_doc: frm,
+				freeze: true,
+			});
 		}
 	},
 
@@ -625,7 +646,7 @@ frappe.ui.form.on('Stock Entry', {
 		if (frm.doc.subcontracting_order) {
 			frm.set_value("purchase_order", "");
 			erpnext.utils.map_current_doc({
-				method: 'erpnext.stock.doctype.stock_entry.stock_entry.get_items_from_subcontracting_order',
+				method: 'erpnext.stock.doctype.stock_entry.stock_entry.get_items_from_subcontract_order',
 				source_name: frm.doc.subcontracting_order,
 				target_doc: frm,
 				freeze: true,
@@ -808,7 +829,8 @@ erpnext.stock.StockEntry = class StockEntry extends erpnext.stock.StockControlle
 			return {
 				"filters": {
 					"docstatus": 1,
-					"company": me.frm.doc.company
+					"company": me.frm.doc.company,
+					"status": ["not in", ["Completed", "Closed"]]
 				}
 			};
 		});
@@ -925,7 +947,10 @@ erpnext.stock.StockEntry = class StockEntry extends erpnext.stock.StockControlle
 				method: "get_items",
 				callback: function(r) {
 					if(!r.exc) refresh_field("items");
-					if(me.frm.doc.bom_no) attach_bom_items(me.frm.doc.bom_no)
+					if(me.frm.doc.bom_no) {
+						attach_bom_items(me.frm.doc.bom_no);
+						erpnext.accounts.dimensions.update_dimension(me.frm, me.frm.doctype);
+					}
 				}
 			});
 		}
@@ -1065,7 +1090,8 @@ erpnext.stock.select_batch_and_serial_no = (frm, item) => {
 	if (frm.doc.purpose === 'Material Receipt') return;
 
 	frappe.require("assets/erpnext/js/utils/serial_no_batch_selector.js", function() {
-		new erpnext.SerialNoBatchSelector({
+		if (frm.batch_selector?.dialog?.display) return;
+		frm.batch_selector = new erpnext.SerialNoBatchSelector({
 			frm: frm,
 			item: item,
 			warehouse_details: get_warehouse_type_and_name(item),

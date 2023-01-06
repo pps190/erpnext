@@ -21,13 +21,6 @@
 			{%= __("Tax Id: ")%}	{%= filters.tax_id %}
 			{% } %}
 	</h6>
-    <!-- Begin PPS Customization -->
-    <h5 class="text-center">
-        {% if (filters.customer_name) { %}
-            {%= data[0].address_display %}
-        {% } %}
-    </h5>
-    <!-- End PPS Customization -->
 	<h5 class="text-center">
 		{%= __(filters.ageing_based_on) %}
 		{%= __("Until") %}
@@ -148,7 +141,7 @@
 						<th style="width: 24%">{%= __("Reference") %}</th>
 					{% } %}
 					{% if(!filters.show_future_payments) { %}
-						<th style="width: 20%">{%= (filters.customer || filters.supplier) ? __("Invoice / Credit #"): __("Party") %}</th>
+						<th style="width: 20%">{%= (filters.customer || filters.supplier) ? __("Remarks"): __("Party") %}</th>
 					{% } %}
 					<th style="width: 10%; text-align: right">{%= __("Invoiced Amount") %}</th>
 					{% if(!filters.show_future_payments) { %}
@@ -203,13 +196,10 @@
 								{% } %}
 							{% } %}
 							<div>
-                            <!-- Begin PPS Customization -->
-<!--							{% if data[i]["remarks"] %}-->
-<!--								{%= __("Remarks") %}:-->
-<!--								{%= data[i]["remarks"] %}-->
-<!--							{% } %}-->
-                                {%= data[i]["delivery_notes"] %}
-                               <!-- End PPS Customization -->
+							{% if data[i]["remarks"] %}
+								{%= __("Remarks") %}:
+								{%= data[i]["remarks"] %}
+							{% } %}
 							</div>
 						</td>
 						{% } %}
@@ -253,7 +243,7 @@
 								{%= format_currency(data[i]["paid"], data[i]["currency"]) %}</td>
 							<td style="text-align: right">{%= format_currency(data[i]["credit_note"], data[i]["currency"]) %} </td>
 						{% } %}
-						<td style="text-align: right; background-color: yellow; opacity: 50%;">
+						<td style="text-align: right">
 							{%= format_currency(data[i]["outstanding"], data[i]["currency"]) %}</td>
 
 						{% if(filters.show_future_payments) { %}
@@ -271,13 +261,9 @@
 						{% if(!data[i]["is_total_row"]) { %}
 							<td>
 								{% if(!(filters.customer || filters.supplier)) { %}
-                                    <!-- Begin PPS Customization -->
-                                    <b>{%= data[i]["party"] %}</b>
-                                    <!-- End PPS Customization -->
+									{%= data[i]["party"] %}
 									{% if(data[i]["customer_name"] && data[i]["customer_name"] != data[i]["party"]) { %}
-                                        <!-- Begin PPS Customization -->
-                                        <br> <b>{%= data[i]["customer_name"] %}</b>
-                                        <!-- End PPS Customization -->
+										<br> {%= data[i]["customer_name"] %}
 									{% } else if(data[i]["supplier_name"] != data[i]["party"]) { %}
 										<br> {%= data[i]["supplier_name"] %}
 									{% } %}
@@ -291,7 +277,7 @@
 						<td style="text-align: right">{%= format_currency(data[i]["invoiced"], data[i]["currency"]) %}</td>
 						<td style="text-align: right">{%= format_currency(data[i]["paid"], data[i]["currency"]) %}</td>
 						<td style="text-align: right">{%= format_currency(data[i]["credit_note"], data[i]["currency"]) %}</td>
-						<td style="text-align: right; background-color: yellow; opacity: 50%;">{%= format_currency(data[i]["outstanding"], data[i]["currency"]) %}</td>
+						<td style="text-align: right">{%= format_currency(data[i]["outstanding"], data[i]["currency"]) %}</td>
 					{% } %}
 				{% } %}
 				</tr>

@@ -63,7 +63,7 @@ class Quotation(SellingController):
 		ordered_items = frappe._dict(
 			frappe.db.get_all(
 				"Sales Order Item",
-				{"prevdoc_doctype": "Quotation", "prevdoc_docname": self.name, "docstatus": 1},
+				{"prevdoc_docname": self.name, "docstatus": 1},
 				["item_code", "sum(qty)"],
 				group_by="item_code",
 				as_list=1,
@@ -119,10 +119,10 @@ class Quotation(SellingController):
 		if not (self.is_fully_ordered() or self.is_partially_ordered()):
 			get_lost_reasons = frappe.get_list("Quotation Lost Reason", fields=["name"])
 			lost_reasons_lst = [reason.get("name") for reason in get_lost_reasons]
-			frappe.db.set(self, "status", "Lost")
+			self.db_set("status", "Lost")
 
 			if detailed_reason:
-				frappe.db.set(self, "order_lost_reason", detailed_reason)
+				self.db_set("order_lost_reason", detailed_reason)
 
 			for reason in lost_reasons_list:
 				if reason.get("lost_reason") in lost_reasons_lst:
@@ -210,7 +210,7 @@ def _make_sales_order(source_name, target_doc=None, ignore_permissions=False):
 	ordered_items = frappe._dict(
 		frappe.db.get_all(
 			"Sales Order Item",
-			{"prevdoc_doctype": "Quotation", "prevdoc_docname": source_name, "docstatus": 1},
+			{"prevdoc_docname": source_name, "docstatus": 1},
 			["item_code", "sum(qty)"],
 			group_by="item_code",
 			as_list=1,
@@ -247,7 +247,7 @@ def _make_sales_order(source_name, target_doc=None, ignore_permissions=False):
 			"Quotation": {"doctype": "Sales Order", "validation": {"docstatus": ["=", 1]}},
 			"Quotation Item": {
 				"doctype": "Sales Order Item",
-				"field_map": {"parent": "prevdoc_docname", "parenttype": "prevdoc_doctype"},
+				"field_map": {"parent": "prevdoc_docname", "name": "quotation_item"},
 				"postprocess": update_item,
 				"condition": lambda doc: doc.qty > 0,
 			},
@@ -268,7 +268,7 @@ def _make_sales_order(source_name, target_doc=None, ignore_permissions=False):
 
 def set_expired_status():
 	# filter out submitted non expired quotations whose validity has been ended
-	cond = "`tabQuotation`.docstatus = 1 and `tabQuotation`.status != 'Expired' and `tabQuotation`.valid_till < %s"
+	cond = "`tabQuotation`.docstatus = 1 and `tabQuotation`.status NOT IN ('Expired', 'Lost') and `tabQuotation`.valid_till < %s"
 	# check if those QUO have SO against it
 	so_against_quo = """
 		SELECT

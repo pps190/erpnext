@@ -10,15 +10,11 @@ from frappe.model.document import Document
 from frappe.utils import add_days, flt, get_datetime, get_time, get_url, nowtime, today
 
 from erpnext import get_default_company
-from erpnext.controllers.employee_boarding_controller import update_employee_boarding_status
 from erpnext.controllers.queries import get_filters_cond
 from erpnext.setup.doctype.holiday_list.holiday_list import is_holiday
 
 
 class Project(Document):
-	def get_feed(self):
-		return "{0}: {1}".format(_(self.status), frappe.safe_decode(self.project_name))
-
 	def onload(self):
 		self.set_onload(
 			"activity_summary",
@@ -43,7 +39,8 @@ class Project(Document):
 		self.send_welcome_email()
 		self.update_costing()
 		self.update_percent_complete()
-		update_employee_boarding_status(self)
+		self.validate_from_to_dates("expected_start_date", "expected_end_date")
+		self.validate_from_to_dates("actual_start_date", "actual_end_date")
 
 	def copy_from_template(self):
 		"""
@@ -145,7 +142,6 @@ class Project(Document):
 	def update_project(self):
 		"""Called externally by Task"""
 		self.update_percent_complete()
-		update_employee_boarding_status(self)
 		self.update_costing()
 		self.db_update()
 
@@ -379,7 +375,7 @@ def get_users_for_project(doctype, txt, searchfield, start, page_len, filters):
 			{fcond} {mcond}
 		order by
 			(case when locate(%(_txt)s, name) > 0 then locate(%(_txt)s, name) else 99999 end),
-			(case when locate(%(_txt)s, full_name) > 0 then locate(%(_txt)s, full_name) else 99999 end)
+			(case when locate(%(_txt)s, full_name) > 0 then locate(%(_txt)s, full_name) else 99999 end),
 			idx desc,
 			name, full_name
 		limit %(page_len)s offset %(start)s""".format(

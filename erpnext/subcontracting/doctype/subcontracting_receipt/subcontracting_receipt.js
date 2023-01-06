@@ -3,6 +3,8 @@
 
 frappe.provide('erpnext.buying');
 
+{% include 'erpnext/stock/landed_taxes_and_charges_common.js' %};
+
 frappe.ui.form.on('Subcontracting Receipt', {
 	setup: (frm) => {
 		frm.get_field('supplied_items').grid.cannot_add_rows = true;
@@ -48,6 +50,25 @@ frappe.ui.form.on('Subcontracting Receipt', {
 				is_group: 0
 			}
 		}));
+
+		frm.set_query("expense_account", "items", function () {
+			return {
+				query: "erpnext.controllers.queries.get_expense_account",
+				filters: { 'company': frm.doc.company }
+			};
+		});
+
+		frappe.db.get_single_value('Buying Settings', 'backflush_raw_materials_of_subcontract_based_on').then(val => {
+			if (val == 'Material Transferred for Subcontract') {
+				frm.fields_dict['supplied_items'].grid.grid_rows.forEach((grid_row) => {
+					grid_row.docfields.forEach((df) => {
+						if (df.fieldname == 'consumed_qty') {
+							df.read_only = 0;
+						}
+					});
+				});
+			}
+		});
 	},
 
 	refresh: (frm) => {
@@ -119,6 +140,16 @@ frappe.ui.form.on('Subcontracting Receipt', {
 	rejected_warehouse: (frm) => {
 		set_warehouse_in_children(frm.doc.items, 'rejected_warehouse', frm.doc.rejected_warehouse);
 	},
+});
+
+frappe.ui.form.on('Landed Cost Taxes and Charges', {
+	amount: function (frm, cdt, cdn) {
+		frm.events.set_base_amount(frm, cdt, cdn);
+	},
+
+	expense_account: function (frm, cdt, cdn) {
+		frm.events.set_account_currency(frm, cdt, cdn);
+	}
 });
 
 frappe.ui.form.on('Subcontracting Receipt Item', {

@@ -226,7 +226,7 @@ $.extend(erpnext.utils, {
 						if (!found) {
 							filters.splice(index, 0, {
 								"fieldname": dimension["fieldname"],
-								"label": __(dimension["label"]),
+								"label": __(dimension["doctype"]),
 								"fieldtype": "MultiSelectList",
 								get_data: function(txt) {
 									return frappe.db.get_link_options(dimension["doctype"], txt);
@@ -333,8 +333,18 @@ $.extend(erpnext.utils, {
 			}
 			frappe.ui.form.make_quick_entry(doctype, null, null, new_doc);
 		});
-	}
+	},
 
+	// check if payments app is installed on site, if not warn user.
+	check_payments_app: () => {
+		if (frappe.boot.versions && !frappe.boot.versions.payments) {
+			const marketplace_link = '<a href="https://frappecloud.com/marketplace/apps/payments">Marketplace</a>'
+			const github_link = '<a href="https://github.com/frappe/payments/">GitHub</a>'
+			const msg = __("payments app is not installed. Please install it from {0} or {1}", [marketplace_link, github_link])
+			frappe.msgprint(msg);
+		}
+
+	},
 });
 
 erpnext.utils.select_alternate_items = function(opts) {
@@ -624,8 +634,8 @@ erpnext.utils.update_child_items = function(opts) {
 		},
 		primary_action_label: __('Update')
 	});
-	const items = cur_frm.doc.items;
-	items.forEach(d => {
+
+	frm.doc[opts.child_docname].forEach(d => {
 		dialog.fields_dict.trans_items.df.data.push({
 			"docname": d.name,
 			"name": d.name,

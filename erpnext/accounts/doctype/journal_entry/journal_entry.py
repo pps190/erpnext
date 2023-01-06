@@ -34,9 +34,6 @@ class JournalEntry(AccountsController):
 	def __init__(self, *args, **kwargs):
 		super(JournalEntry, self).__init__(*args, **kwargs)
 
-	def get_feed(self):
-		return self.voucher_type
-
 	def validate(self):
 		if self.voucher_type == "Opening Entry":
 			self.is_opening = "Yes"
@@ -184,7 +181,9 @@ class JournalEntry(AccountsController):
 			}
 		)
 
-		tax_withholding_details = get_party_tax_withholding_details(inv, self.tax_withholding_category)
+		tax_withholding_details, advance_taxes, voucher_wise_amount = get_party_tax_withholding_details(
+			inv, self.tax_withholding_category
+		)
 
 		if not tax_withholding_details:
 			return
@@ -317,7 +316,7 @@ class JournalEntry(AccountsController):
 
 	def validate_party(self):
 		for d in self.get("accounts"):
-			account_type = frappe.db.get_value("Account", d.account, "account_type")
+			account_type = frappe.get_cached_value("Account", d.account, "account_type")
 			if account_type in ["Receivable", "Payable"]:
 				if not (d.party_type and d.party):
 					frappe.throw(
@@ -380,7 +379,7 @@ class JournalEntry(AccountsController):
 	def validate_against_jv(self):
 		for d in self.get("accounts"):
 			if d.reference_type == "Journal Entry":
-				account_root_type = frappe.db.get_value("Account", d.account, "root_type")
+				account_root_type = frappe.get_cached_value("Account", d.account, "root_type")
 				if account_root_type == "Asset" and flt(d.debit) > 0:
 					frappe.throw(
 						_(
@@ -590,28 +589,30 @@ class JournalEntry(AccountsController):
 				d.against_account = frappe.db.get_value(d.reference_type, d.reference_name, field)
 		else:
 			for d in self.get("accounts"):
-				if flt(d.debit > 0):
+				if flt(d.debit) > 0:
 					accounts_debited.append(d.party or d.account)
 				if flt(d.credit) > 0:
 					accounts_credited.append(d.party or d.account)
 
 			for d in self.get("accounts"):
-				if flt(d.debit > 0):
+				if flt(d.debit) > 0:
 					d.against_account = ", ".join(list(set(accounts_credited)))
-				if flt(d.credit > 0):
+				if flt(d.credit) > 0:
 					d.against_account = ", ".join(list(set(accounts_debited)))
 
 	def validate_debit_credit_amount(self):
-		for d in self.get("accounts"):
-			if not flt(d.debit) and not flt(d.credit):
-				frappe.throw(_("Row {0}: Both Debit and Credit values cannot be zero").format(d.idx))
+		if not (self.voucher_type == "Exchange Gain Or Loss" and self.multi_currency):
+			for d in self.get("accounts"):
+				if not flt(d.debit) and not flt(d.credit):
+					frappe.throw(_("Row {0}: Both Debit and Credit values cannot be zero").format(d.idx))
 
 	def validate_total_debit_and_credit(self):
 		self.set_total_debit_credit()
-		if self.difference:
-			frappe.throw(
-				_("Total Debit must be equal to Total Credit. The difference is {0}").format(self.difference)
-			)
+		if not (self.voucher_type == "Exchange Gain Or Loss" and self.multi_currency):
+			if self.difference:
+				frappe.throw(
+					_("Total Debit must be equal to Total Credit. The difference is {0}").format(self.difference)
+				)
 
 	def set_total_debit_credit(self):
 		self.total_debit, self.total_credit, self.difference = 0, 0, 0
@@ -629,7 +630,7 @@ class JournalEntry(AccountsController):
 	def validate_multi_currency(self):
 		alternate_currency = []
 		for d in self.get("accounts"):
-			account = frappe.db.get_value(
+			account = frappe.get_cached_value(
 				"Account", d.account, ["account_currency", "account_type"], as_dict=1
 			)
 			if account:
@@ -649,16 +650,17 @@ class JournalEntry(AccountsController):
 		self.set_exchange_rate()
 
 	def set_amounts_in_company_currency(self):
-		for d in self.get("accounts"):
-			d.debit_in_account_currency = flt(
-				d.debit_in_account_currency, d.precision("debit_in_account_currency")
-			)
-			d.credit_in_account_currency = flt(
-				d.credit_in_account_currency, d.precision("credit_in_account_currency")
-			)
+		if not (self.voucher_type == "Exchange Gain Or Loss" and self.multi_currency):
+			for d in self.get("accounts"):
+				d.debit_in_account_currency = flt(
+					d.debit_in_account_currency, d.precision("debit_in_account_currency")
+				)
+				d.credit_in_account_currency = flt(
+					d.credit_in_account_currency, d.precision("credit_in_account_currency")
+				)
 
-			d.debit = flt(d.debit_in_account_currency * flt(d.exchange_rate), d.precision("debit"))
-			d.credit = flt(d.credit_in_account_currency * flt(d.exchange_rate), d.precision("credit"))
+				d.debit = flt(d.debit_in_account_currency * flt(d.exchange_rate), d.precision("debit"))
+				d.credit = flt(d.credit_in_account_currency * flt(d.exchange_rate), d.precision("credit"))
 
 	def set_exchange_rate(self):
 		for d in self.get("accounts"):
@@ -757,10 +759,10 @@ class JournalEntry(AccountsController):
 					pay_to_recd_from = d.party
 
 				if pay_to_recd_from and pay_to_recd_from == d.party:
-					party_amount += d.debit_in_account_currency or d.credit_in_account_currency
+					party_amount += flt(d.debit_in_account_currency) or flt(d.credit_in_account_currency)
 					party_account_currency = d.account_currency
 
-			elif frappe.db.get_value("Account", d.account, "account_type") in ["Bank", "Cash"]:
+			elif frappe.get_cached_value("Account", d.account, "account_type") in ["Bank", "Cash"]:
 				bank_amount += d.debit_in_account_currency or d.credit_in_account_currency
 				bank_account_currency = d.account_currency
 
@@ -787,7 +789,7 @@ class JournalEntry(AccountsController):
 	def build_gl_map(self):
 		gl_map = []
 		for d in self.get("accounts"):
-			if d.debit or d.credit:
+			if d.debit or d.credit or (self.voucher_type == "Exchange Gain Or Loss"):
 				r = [d.user_remark, self.remark]
 				r = [x for x in r if x]
 				remarks = "\n".join(r)
@@ -835,7 +837,7 @@ class JournalEntry(AccountsController):
 			make_gl_entries(gl_map, cancel=cancel, adv_adj=adv_adj, update_outstanding=update_outstanding)
 
 	@frappe.whitelist()
-	def get_balance(self):
+	def get_balance(self, difference_account=None):
 		if not self.get("accounts"):
 			msgprint(_("'Entries' cannot be empty"), raise_exception=True)
 		else:
@@ -850,7 +852,13 @@ class JournalEntry(AccountsController):
 						blank_row = d
 
 				if not blank_row:
-					blank_row = self.append("accounts", {})
+					blank_row = self.append(
+						"accounts",
+						{
+							"account": difference_account,
+							"cost_center": erpnext.get_default_cost_center(self.company),
+						},
+					)
 
 				blank_row.exchange_rate = 1
 				if diff > 0:
@@ -985,7 +993,7 @@ def get_default_bank_cash_account(company, account_type=None, mode_of_payment=No
 					account = account_list[0].name
 
 	if account:
-		account_details = frappe.db.get_value(
+		account_details = frappe.get_cached_value(
 			"Account", account, ["account_currency", "account_type"], as_dict=1
 		)
 
@@ -1114,7 +1122,7 @@ def get_payment_entry(ref_doc, args):
 			"party_type": args.get("party_type"),
 			"party": ref_doc.get(args.get("party_type").lower()),
 			"cost_center": cost_center,
-			"account_type": frappe.db.get_value("Account", args.get("party_account"), "account_type"),
+			"account_type": frappe.get_cached_value("Account", args.get("party_account"), "account_type"),
 			"account_currency": args.get("party_account_currency")
 			or get_account_currency(args.get("party_account")),
 			"balance": get_balance_on(args.get("party_account")),
@@ -1208,6 +1216,7 @@ def get_outstanding(args):
 		args = json.loads(args)
 
 	company_currency = erpnext.get_company_currency(args.get("company"))
+	due_date = None
 
 	if args.get("doctype") == "Journal Entry":
 		condition = " and party=%(party)s" if args.get("party") else ""
@@ -1232,9 +1241,11 @@ def get_outstanding(args):
 		invoice = frappe.db.get_value(
 			args["doctype"],
 			args["docname"],
-			["outstanding_amount", "conversion_rate", scrub(party_type)],
+			["outstanding_amount", "conversion_rate", scrub(party_type), "due_date"],
 			as_dict=1,
 		)
+
+		due_date = invoice.get("due_date")
 
 		exchange_rate = (
 			invoice.conversion_rate if (args.get("account_currency") != company_currency) else 1
@@ -1258,6 +1269,7 @@ def get_outstanding(args):
 			"exchange_rate": exchange_rate,
 			"party_type": party_type,
 			"party": invoice.get(scrub(party_type)),
+			"reference_due_date": due_date,
 		}
 
 
@@ -1277,7 +1289,7 @@ def get_party_account_and_balance(company, party_type, party, cost_center=None):
 		"account": account,
 		"balance": account_balance,
 		"party_balance": party_balance,
-		"account_currency": frappe.db.get_value("Account", account, "account_currency"),
+		"account_currency": frappe.get_cached_value("Account", account, "account_currency"),
 	}
 
 
@@ -1290,7 +1302,7 @@ def get_account_balance_and_party_type(
 		frappe.msgprint(_("No Permission"), raise_exception=1)
 
 	company_currency = erpnext.get_company_currency(company)
-	account_details = frappe.db.get_value(
+	account_details = frappe.get_cached_value(
 		"Account", account, ["account_type", "account_currency"], as_dict=1
 	)
 
@@ -1343,7 +1355,7 @@ def get_exchange_rate(
 ):
 	from erpnext.setup.utils import get_exchange_rate
 
-	account_details = frappe.db.get_value(
+	account_details = frappe.get_cached_value(
 		"Account", account, ["account_type", "root_type", "account_currency", "company"], as_dict=1
 	)
 
