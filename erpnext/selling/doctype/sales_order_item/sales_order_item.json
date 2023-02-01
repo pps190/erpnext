@@ -533,7 +533,7 @@
   },
   {
    "fieldname": "prevdoc_doctype",
-   "fieldtype": "Dynamic Link",
+   "fieldtype": "Link",
    "label": "Previous DocType",
    "no_copy": 1,
    "oldfieldname": "prevdoc_doctype",
@@ -852,14 +852,6 @@
    "fieldtype": "Data",
    "label": "Purchase Order Item",
    "print_hide": 1,
-   "read_only": 1
-  },
-  {
-   "fieldname": "quotation_item",
-   "fieldtype": "Data",
-   "hidden": 1,
-   "label": "quotation_item",
-   "no_copy": 1,
    "read_only": 1
   },
   {
