@@ -273,20 +273,18 @@ erpnext.stock.move_item = function (item, source, target, actual_qty, rate, call
 			return;
 		}
 
-		frappe.model.with_doctype('Stock Entry', function () {
-			let doc = frappe.model.get_new_doc('Stock Entry');
-			doc.from_warehouse = dialog.get_value('source');
-			doc.to_warehouse = dialog.get_value('target');
-			doc.stock_entry_type = doc.from_warehouse ? "Material Transfer" : "Material Receipt";
-			let row = frappe.model.add_child(doc, 'items');
-			row.item_code = dialog.get_value('item_code');
-			row.s_warehouse = dialog.get_value('source');
-			row.t_warehouse = dialog.get_value('target');
-			row.qty = dialog.get_value('qty');
-			row.conversion_factor = 1;
-			row.transfer_qty = dialog.get_value('qty');
-			row.basic_rate = dialog.get_value('rate');
-			frappe.set_route('Form', doc.doctype, doc.name);
+		frappe.call({
+			method: "erpnext.stock.doctype.stock_entry.stock_entry_utils.make_stock_entry",
+			args: dialog.get_values(),
+			btn: dialog.get_primary_btn(),
+			freeze: true,
+			freeze_message: __("Creating Stock Entry"),
+			callback: function (r) {
+				frappe.show_alert(__('Stock Entry {0} created',
+					['<a href="/app/stock-entry/' + r.message.name + '">' + r.message.name + '</a>']));
+				dialog.hide();
+				callback(r);
+			}
 		});
 	});
 };
