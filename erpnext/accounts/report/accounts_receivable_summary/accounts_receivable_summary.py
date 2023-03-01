@@ -123,6 +123,8 @@ class AccountsReceivableSummary(ReceivablePayableReport):
 
 		if self.filters.sales_partner:
 			self.party_total[row.party]["default_sales_partner"] = row.get("default_sales_partner")
+		
+		self.party_total[row.party]["address_display"] = self.get_billing_address(row.party)
 
 	def get_columns(self):
 		self.columns = []
@@ -136,6 +138,8 @@ class AccountsReceivableSummary(ReceivablePayableReport):
 
 		if self.party_naming_by == "Naming Series":
 			self.add_column(_("{0} Name").format(self.party_type), fieldname="party_name", fieldtype="Data")
+		
+		self.add_column(_("Address"), fieldname="address_display", fieldtype="Data")
 
 		credit_debit_label = "Credit Note" if self.party_type == "Customer" else "Debit Note"
 
