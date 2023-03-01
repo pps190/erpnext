@@ -21,6 +21,13 @@
 			{%= __("Tax Id: ")%}	{%= filters.tax_id %}
 			{% } %}
 	</h6>
+	<!-- Begin PPS Customization -->
+    <h5 class="text-center">
+        {% if (filters.customer_name) { %}
+            {%= data[0].address_display %}
+        {% } %}
+    </h5>
+    <!-- End PPS Customization -->
 	<h5 class="text-center">
 		{%= __(filters.ageing_based_on) %}
 		{%= __("Until") %}
