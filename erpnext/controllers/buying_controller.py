@@ -265,7 +265,10 @@ class BuyingController(SubcontractingController):
 					) / qty_in_stock_uom
 				else:
 					item.valuation_rate = (
-						item.base_net_amount + item.item_tax_amount + flt(item.landed_cost_voucher_amount)
+						item.base_net_amount
+						+ item.item_tax_amount
+						+ flt(item.landed_cost_voucher_amount)
+						+ flt(item.get("rate_difference_with_purchase_invoice"))
 					) / qty_in_stock_uom
 			else:
 				item.valuation_rate = 0.0
@@ -712,6 +715,8 @@ class BuyingController(SubcontractingController):
 						asset.purchase_date = self.posting_date
 						asset.supplier = self.supplier
 					elif self.docstatus == 2:
+						if asset.docstatus == 2:
+							continue
 						if asset.docstatus == 0:
 							asset.set(field, None)
 							asset.supplier = None

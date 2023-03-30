@@ -409,7 +409,14 @@ class SubcontractingController(StockController):
 		if self.available_materials.get(key) and self.available_materials[key]["batch_no"]:
 			new_rm_obj = None
 			for batch_no, batch_qty in self.available_materials[key]["batch_no"].items():
-				if batch_qty >= qty:
+				if batch_qty >= qty or (
+					rm_obj.consumed_qty == 0
+					and self.backflush_based_on == "BOM"
+					and len(self.available_materials[key]["batch_no"]) == 1
+				):
+					if rm_obj.consumed_qty == 0:
+						self.__set_consumed_qty(rm_obj, qty)
+
 					self.__set_batch_no_as_per_qty(item_row, rm_obj, batch_no, qty)
 					self.available_materials[key]["batch_no"][batch_no] -= qty
 					return
@@ -448,7 +455,7 @@ class SubcontractingController(StockController):
 					"allow_zero_valuation": 1,
 				}
 			)
-			rm_obj.rate = get_incoming_rate(args)
+			rm_obj.rate = bom_item.rate if self.backflush_based_on == "BOM" else get_incoming_rate(args)
 
 		if self.doctype == self.subcontract_data.order_doctype:
 			rm_obj.required_qty = qty

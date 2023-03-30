@@ -168,7 +168,7 @@ def make_depreciation_entry(asset_depr_schedule_name, date=None):
 			row.value_after_depreciation -= d.depreciation_amount
 			row.db_update()
 
-	frappe.db.set_value("Asset", asset_name, "depr_entry_posting_status", "Successful")
+	asset.db_set("depr_entry_posting_status", "Successful")
 
 	asset.set_status()
 
@@ -249,10 +249,16 @@ def notify_depr_entry_posting_error(failed_asset_names):
 	asset_links = get_comma_separated_asset_links(failed_asset_names)
 
 	message = (
-		_("Hi,")
-		+ "<br>"
-		+ _("The following assets have failed to post depreciation entries: {0}").format(asset_links)
+		_("Hello,")
+		+ "<br><br>"
+		+ _("The following assets have failed to automatically post depreciation entries: {0}").format(
+			asset_links
+		)
 		+ "."
+		+ "<br><br>"
+		+ _(
+			"Please raise a support ticket and share this email, or forward this email to your development team so that they can find the issue in the developer console by manually creating the depreciation entry via the asset's depreciation schedule table."
+		)
 	)
 
 	frappe.sendmail(recipients=recipients, subject=subject, message=message)
@@ -533,18 +539,8 @@ def get_asset_details(asset, finance_book=None):
 	disposal_account, depreciation_cost_center = get_disposal_account_and_cost_center(asset.company)
 	depreciation_cost_center = asset.cost_center or depreciation_cost_center
 
-	idx = 1
-	if finance_book:
-		for d in asset.finance_books:
-			if d.finance_book == finance_book:
-				idx = d.idx
-				break
+	value_after_depreciation = asset.get_value_after_depreciation(finance_book)
 
-	value_after_depreciation = (
-		asset.finance_books[idx - 1].value_after_depreciation
-		if asset.calculate_depreciation
-		else asset.value_after_depreciation
-	)
 	accumulated_depr_amount = flt(asset.gross_purchase_amount) - flt(value_after_depreciation)
 
 	return (
