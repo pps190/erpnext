@@ -89,8 +89,27 @@ def _reorder_item():
 		if item.variant_of and not item.get("reorder_levels"):
 			item.update_template_tables()
 
+		alternative_items = frappe.get_all("Item Alternative", filters={"item_code": item_code}, fields=["alternative_item_code"], pluck="alternative_item_code")
+		alternative_items.append(item_code)
+
 		if item.get("reorder_levels"):
+			item_warehouse_cost = {}
+
 			for d in item.get("reorder_levels"):
+				item_codes = []
+				item_code_costs = []
+				for aic in alternative_items:
+					item_codes.append(aic)
+					item_code_costs.append((frappe.get_last_doc("Stock Ledger Entry", filters={"item_code": aic, "warehouse": d.warehouse}) or frappe._dict({valuation_rate: 0.00})).valuation_rate)
+				
+				min_cost = min(item_code_costs)
+				while min_cost == 0 and len(item_code_costs) > 0:
+					item_codes.pop(item_code_costs.index(min_cost))
+					item_code_costs.pop(item_code_costs.index(min_cost))
+				
+				if min_cost != 0:
+					item_code = item_codes[item_code_costs.index(min_cost)]
+
 				add_to_material_request(
 					item_code,
 					d.warehouse,
