@@ -45,6 +45,11 @@ def _reorder_item():
 			)""",
 		{"today": nowdate()},
 	)
+	
+	alternative_items = frappe.get_all("Item Alternative", fields=["alternative_item_code"], pluck="alternative_item_code")
+	
+	# Don't consider alternative items.
+	items_to_consider = list(set(items_to_consider) - set(alternative_items))
 
 	if not items_to_consider:
 		return
