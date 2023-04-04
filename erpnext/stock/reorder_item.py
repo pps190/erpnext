@@ -116,6 +116,17 @@ def get_item_warehouse_projected_qty(items_to_consider):
 		items_to_consider,
 	):
 
+		projected_qty = flt(projected_qty)
+
+		for alternative_item in frappe.get_all("Item Alternative", filters={"item_code": item_code}, fields=["alternative_item_code"], pluck="alternative_item_code"):
+			projected_qty += flt(
+				frappe.db.get_value(
+					"Bin",
+					filters={"item_code": alternative_item, "warehouse": warehouse},
+					fieldname="projected_qty"
+				) or 0.00
+			)
+
 		if item_code not in item_warehouse_projected_qty:
 			item_warehouse_projected_qty.setdefault(item_code, {})
 
