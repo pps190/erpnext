@@ -367,9 +367,9 @@ scheduler_events = {
 			"erpnext.accounts.doctype.gl_entry.gl_entry.rename_gle_sle_docs",
 		],
 		# Daily but offset by 45 minutes
-		"45 0 * * *": [
-			"erpnext.stock.reorder_item.reorder_item",
-		],
+		# "45 0 * * *": [
+			
+		# ],
 	},
 	"all": [
 		"erpnext.projects.doctype.project.project.project_status_update_reminder",
@@ -414,6 +414,7 @@ scheduler_events = {
 		"erpnext.loan_management.doctype.process_loan_security_shortfall.process_loan_security_shortfall.create_process_loan_security_shortfall",
 		"erpnext.loan_management.doctype.process_loan_interest_accrual.process_loan_interest_accrual.process_loan_interest_accrual_for_term_loans",
 		"erpnext.crm.utils.open_leads_opportunities_based_on_todays_event",
+		"erpnext.stock.reorder_item.reorder_item",
 	],
 	"monthly_long": [
 		"erpnext.accounts.deferred_revenue.process_deferred_accounting",
