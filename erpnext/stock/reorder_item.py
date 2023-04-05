@@ -45,9 +45,9 @@ def _reorder_item():
 			)""",
 		{"today": nowdate()},
 	)
-	
+
 	alternative_items = frappe.get_all("Item Alternative", fields=["alternative_item_code"], pluck="alternative_item_code")
-	
+
 	# Don't consider alternative items.
 	items_to_consider = list(set(items_to_consider) - set(alternative_items))
 
@@ -93,20 +93,28 @@ def _reorder_item():
 		alternative_items.append(item_code)
 
 		if item.get("reorder_levels"):
-			item_warehouse_cost = {}
-
 			for d in item.get("reorder_levels"):
 				item_codes = []
 				item_code_costs = []
 				for aic in alternative_items:
+					try:
+						sle = frappe.get_last_doc("Stock Ledger Entry", filters={"item_code": aic, "warehouse": d.warehouse})
+					except frappe.DoesNotExistError:
+						sle = frappe._dict({"valuation_rate": 0.00})
 					item_codes.append(aic)
-					item_code_costs.append((frappe.get_last_doc("Stock Ledger Entry", filters={"item_code": aic, "warehouse": d.warehouse}) or frappe._dict({valuation_rate: 0.00})).valuation_rate)
-				
+					item_code_costs.append(sle.valuation_rate)
+
 				min_cost = min(item_code_costs)
 				while min_cost == 0 and len(item_code_costs) > 0:
-					item_codes.pop(item_code_costs.index(min_cost))
-					item_code_costs.pop(item_code_costs.index(min_cost))
-				
+					try:
+						item_codes.pop(item_code_costs.index(min_cost))
+						item_code_costs.pop(item_code_costs.index(min_cost))
+						min_cost = min(item_code_costs)
+					except ValueError:
+						print(min_cost)
+						print(item_codes)
+						print(item_code_costs)
+
 				if min_cost != 0:
 					item_code = item_codes[item_code_costs.index(min_cost)]
 
