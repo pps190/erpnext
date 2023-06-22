@@ -46,6 +46,11 @@ def _reorder_item():
 		{"today": nowdate()},
 	)
 
+	alternative_items = frappe.get_all("Item Alternative", fields=["alternative_item_code"], pluck="alternative_item_code")
+
+	# Don't consider alternative items.
+	items_to_consider = list(set(items_to_consider) - set(alternative_items))
+
 	if not items_to_consider:
 		return
 
@@ -84,8 +89,35 @@ def _reorder_item():
 		if item.variant_of and not item.get("reorder_levels"):
 			item.update_template_tables()
 
+		alternative_items = frappe.get_all("Item Alternative", filters={"item_code": item_code}, fields=["alternative_item_code"], pluck="alternative_item_code")
+		alternative_items.append(item_code)
+
 		if item.get("reorder_levels"):
 			for d in item.get("reorder_levels"):
+				item_codes = []
+				item_code_costs = []
+				for aic in alternative_items:
+					try:
+						sle = frappe.get_last_doc("Stock Ledger Entry", filters={"item_code": aic, "warehouse": d.warehouse})
+					except frappe.DoesNotExistError:
+						sle = frappe._dict({"valuation_rate": 0.00})
+					item_codes.append(aic)
+					item_code_costs.append(sle.valuation_rate)
+
+				min_cost = min(item_code_costs)
+				while min_cost == 0 and len(item_code_costs) > 0:
+					try:
+						item_codes.pop(item_code_costs.index(min_cost))
+						item_code_costs.pop(item_code_costs.index(min_cost))
+						min_cost = min(item_code_costs)
+					except ValueError:
+						print(min_cost)
+						print(item_codes)
+						print(item_code_costs)
+
+				if min_cost != 0:
+					item_code = item_codes[item_code_costs.index(min_cost)]
+
 				add_to_material_request(
 					item_code,
 					d.warehouse,
@@ -110,6 +142,17 @@ def get_item_warehouse_projected_qty(items_to_consider):
 		),
 		items_to_consider,
 	):
+
+		projected_qty = flt(projected_qty)
+
+		for alternative_item in frappe.get_all("Item Alternative", filters={"item_code": item_code}, fields=["alternative_item_code"], pluck="alternative_item_code"):
+			projected_qty += flt(
+				frappe.db.get_value(
+					"Bin",
+					filters={"item_code": alternative_item, "warehouse": warehouse},
+					fieldname="projected_qty"
+				) or 0.00
+			)
 
 		if item_code not in item_warehouse_projected_qty:
 			item_warehouse_projected_qty.setdefault(item_code, {})

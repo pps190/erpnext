@@ -138,7 +138,7 @@
    "oldfieldname": "item_code",
    "oldfieldtype": "Data",
    "reqd": 1,
-   "unique": 1
+   "unique": 0
   },
   {
    "depends_on": "variant_of",
@@ -911,7 +911,7 @@
  "index_web_pages_for_search": 1,
  "links": [],
  "make_attachments_public": 1,
- "modified": "2023-02-14 04:48:26.343620",
+ "modified": "2023-04-04 04:48:26.343620",
  "modified_by": "Administrator",
  "module": "Stock",
  "name": "Item",
