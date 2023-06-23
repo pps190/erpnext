@@ -15,6 +15,9 @@ class BankTransaction(StatusUpdater):
 		self.clear_linked_payment_entries()
 		self.set_status()
 
+		if frappe.db.get_single_value("Accounts Settings", "enable_party_matching"):
+			self.auto_set_party()
+
 	_saving_flag = False
 
 	# nosemgrep: frappe-semgrep-rules.rules.frappe-modifying-but-not-comitting
@@ -46,7 +49,7 @@ class BankTransaction(StatusUpdater):
 	def add_payment_entries(self, vouchers):
 		"Add the vouchers with zero allocation. Save() will perform the allocations and clearance"
 		if 0.0 >= self.unallocated_amount:
-			frappe.throw(frappe._(f"Bank Transaction {self.name} is already fully reconciled"))
+			frappe.throw(frappe._("Bank Transaction {0} is already fully reconciled").format(self.name))
 
 		added = False
 		for voucher in vouchers:
@@ -114,9 +117,7 @@ class BankTransaction(StatusUpdater):
 
 				elif 0.0 > unallocated_amount:
 					self.db_delete_payment_entry(payment_entry)
-					frappe.throw(
-						frappe._(f"Voucher {payment_entry.payment_entry} is over-allocated by {unallocated_amount}")
-					)
+					frappe.throw(frappe._("Voucher {0} is over-allocated by {1}").format(unallocated_amount))
 
 		self.reload()
 
@@ -148,6 +149,26 @@ class BankTransaction(StatusUpdater):
 			payment_entry.payment_document, payment_entry.payment_entry, clearance_date, self
 		)
 
+	def auto_set_party(self):
+		from erpnext.accounts.doctype.bank_transaction.auto_match_party import AutoMatchParty
+
+		if self.party_type and self.party:
+			return
+
+		result = AutoMatchParty(
+			bank_party_account_number=self.bank_party_account_number,
+			bank_party_iban=self.bank_party_iban,
+			bank_party_name=self.bank_party_name,
+			description=self.description,
+			deposit=self.deposit,
+		).match()
+
+		if result:
+			party_type, party = result
+			frappe.db.set_value(
+				"Bank Transaction", self.name, field={"party_type": party_type, "party": party}
+			)
+
 
 @frappe.whitelist()
 def get_doctypes_for_bank_reconciliation():
@@ -178,7 +199,9 @@ def get_clearance_details(transaction, payment_entry):
 		if gle["gl_account"] == gl_bank_account:
 			if gle["amount"] <= 0.0:
 				frappe.throw(
-					frappe._(f"Voucher {payment_entry.payment_entry} value is broken: {gle['amount']}")
+					frappe._("Voucher {0} value is broken: {1}").format(
+						payment_entry.payment_entry, gle["amount"]
+					)
 				)
 
 			unmatched_gles -= 1
@@ -281,10 +304,13 @@ def get_paid_amount(payment_entry, currency, gl_bank_account):
 		)
 
 	elif payment_entry.payment_document == "Journal Entry":
-		return frappe.db.get_value(
-			"Journal Entry Account",
-			{"parent": payment_entry.payment_entry, "account": gl_bank_account},
-			"sum(credit_in_account_currency)",
+		return abs(
+			frappe.db.get_value(
+				"Journal Entry Account",
+				{"parent": payment_entry.payment_entry, "account": gl_bank_account},
+				"sum(debit_in_account_currency-credit_in_account_currency)",
+			)
+			or 0
 		)
 
 	elif payment_entry.payment_document == "Expense Claim":

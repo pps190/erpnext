@@ -54,9 +54,11 @@ erpnext.accounts.PurchaseInvoice = class PurchaseInvoice extends erpnext.buying.
 		hide_fields(this.frm.doc);
 		// Show / Hide button
 		this.show_general_ledger();
+		erpnext.accounts.ledger_preview.show_accounting_ledger_preview(this.frm);
 
-		if(doc.update_stock==1 && doc.docstatus==1) {
+		if(doc.update_stock==1) {
 			this.show_stock_ledger();
+			erpnext.accounts.ledger_preview.show_stock_ledger_preview(this.frm);
 		}
 
 		if(!doc.is_return && doc.docstatus == 1 && doc.outstanding_amount != 0){
@@ -82,7 +84,11 @@ erpnext.accounts.PurchaseInvoice = class PurchaseInvoice extends erpnext.buying.
 
 		if(doc.docstatus == 1 && doc.outstanding_amount != 0
 			&& !(doc.is_return && doc.return_against) && !doc.on_hold) {
-			this.frm.add_custom_button(__('Payment'), this.make_payment_entry, __('Create'));
+			this.frm.add_custom_button(
+				__('Payment'),
+				() => this.make_payment_entry(),
+				__('Create')
+			);
 			cur_frm.page.set_inner_btn_group_as_primary(__('Create'));
 		}
 
@@ -299,7 +305,7 @@ erpnext.accounts.PurchaseInvoice = class PurchaseInvoice extends erpnext.buying.
 
 	apply_tds(frm) {
 		var me = this;
-
+		me.frm.set_value("tax_withheld_vouchers", []);
 		if (!me.frm.doc.apply_tds) {
 			me.frm.set_value("tax_withholding_category", '');
 			me.frm.set_df_property("tax_withholding_category", "hidden", 1);
