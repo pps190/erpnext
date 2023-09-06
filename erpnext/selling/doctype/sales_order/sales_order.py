@@ -3,6 +3,7 @@
 
 
 import json
+from collections import Counter, defaultdict
 
 import frappe
 import frappe.utils
@@ -114,8 +115,8 @@ class SalesOrder(SellingController):
 				so
 				and so[0][0]
 				and not cint(
-					frappe.db.get_single_value("Selling Settings", "allow_against_multiple_purchase_orders")
-				)
+				frappe.db.get_single_value("Selling Settings", "allow_against_multiple_purchase_orders")
+			)
 			):
 				frappe.msgprint(
 					_("Warning: Sales Order {0} already exists against Customer's Purchase Order {1}").format(
@@ -125,7 +126,6 @@ class SalesOrder(SellingController):
 
 	def validate_for_items(self):
 		for d in self.get("items"):
-
 			# used for production plan
 			d.transaction_date = self.transaction_date
 
@@ -773,7 +773,7 @@ def make_material_request(source_name, target_doc=None):
 				"doctype": "Material Request Item",
 				"field_map": {"name": "sales_order_item", "parent": "sales_order"},
 				"condition": lambda doc: not frappe.db.exists("Product Bundle", doc.item_code)
-				and (doc.stock_qty - doc.delivered_qty) > requested_item_qty.get(doc.name, 0),
+										 and (doc.stock_qty - doc.delivered_qty) > requested_item_qty.get(doc.name, 0),
 				"postprocess": update_item,
 			},
 		},
@@ -853,29 +853,53 @@ def make_delivery_note(source_name, target_doc=None, skip_item_mapping=False):
 
 	if not skip_item_mapping:
 
-		def condition(doc):
+		def condition(doc, items=None):
 			# make_mapped_doc sets js `args` into `frappe.flags.args`
 			if frappe.flags.args and frappe.flags.args.delivery_dates:
 				if cstr(doc.delivery_date) not in frappe.flags.args.delivery_dates:
 					return False
-			return abs(doc.delivered_qty) < abs(doc.qty) and doc.delivered_by_supplier != 1
+			conditions = [abs(doc.delivered_qty) < abs(doc.qty), doc.delivered_by_supplier != 1]
+			if isinstance(items, list):
+				conditions.append(doc.name in items)
 
-		mapper["Sales Order Item"] = {
-			"doctype": "Delivery Note Item",
-			"field_map": {
-				"rate": "rate",
-				"name": "so_detail",
-				"parent": "against_sales_order",
-			},
-			"postprocess": update_item,
-			"condition": condition,
-		}
+			return all(conditions)
 
-	target_doc = get_mapped_doc("Sales Order", source_name, mapper, target_doc, set_missing_values)
-	target_doc.set_onload("ignore_price_list", True)
+		def map_doc(warehouse=None, items=None):
+			mapper["Sales Order Item"] = {
+				"doctype": "Delivery Note Item",
+				"field_map": {
+					"rate": "rate",
+					"name": "so_detail",
+					"parent": "against_sales_order",
+				},
+				"postprocess": update_item,
+				"condition": lambda doc: condition(doc, items),
+			}
+			return get_mapped_doc("Sales Order", source_name, mapper, target_doc, set_missing_values)
 
-	return target_doc
+		so_item_by_warehouse = defaultdict(list)
+		for name, warehouse in frappe.get_all(
+			"Sales Order Item",
+			{"parenttype": "Sales Order", "parentfield": "items", "parent": source_name},
+			["name", "warehouse"],
+			as_list=True,
+		):
+			so_item_by_warehouse[warehouse].append(name)
 
+		warehouses_is_group = frappe.get_all(
+			"Warehouse", {"name": ["IN", so_item_by_warehouse.keys()]}, ["is_group"], pluck="is_group"
+		)
+		if len(Counter(warehouses_is_group)) > 1:
+			frappe.throw(_("All items must be a group warehouse or a non-group warehouse."))
+
+		if len(warehouses_is_group) > 1 and warehouses_is_group[0]:
+			docs = []
+			for warehouse, items in so_item_by_warehouse.items():
+				docs.append(
+					map_doc(warehouse, items).save())
+			return docs
+
+	return map_doc()
 
 @frappe.whitelist()
 def make_sales_invoice(source_name, target_doc=None, ignore_permissions=False):
@@ -946,7 +970,7 @@ def make_sales_invoice(source_name, target_doc=None, ignore_permissions=False):
 				},
 				"postprocess": update_item,
 				"condition": lambda doc: doc.qty
-				and (doc.base_amount == 0 or abs(doc.billed_amt) < abs(doc.amount)),
+										 and (doc.base_amount == 0 or abs(doc.billed_amt) < abs(doc.amount)),
 			},
 			"Sales Taxes and Charges": {"doctype": "Sales Taxes and Charges", "add_if_empty": True},
 			"Sales Team": {"doctype": "Sales Team", "add_if_empty": True},
@@ -1166,8 +1190,8 @@ def make_purchase_order_for_default_supplier(source_name, selected_items=None, t
 					],
 					"postprocess": update_item,
 					"condition": lambda doc: doc.ordered_qty < doc.stock_qty
-					and doc.supplier == supplier
-					and doc.item_code in items_to_map,
+											 and doc.supplier == supplier
+											 and doc.item_code in items_to_map,
 				},
 			},
 			target_doc,
@@ -1272,8 +1296,8 @@ def make_purchase_order(source_name, selected_items=None, target_doc=None):
 				],
 				"postprocess": update_item,
 				"condition": lambda doc: doc.ordered_qty < doc.stock_qty
-				and doc.item_code in items_to_map
-				and not is_product_bundle(doc.item_code),
+										 and doc.item_code in items_to_map
+										 and not is_product_bundle(doc.item_code),
 			},
 			"Packed Item": {
 				"doctype": "Purchase Order Item",
@@ -1450,43 +1474,75 @@ def create_pick_list(source_name, target_doc=None):
 				target.qty = target.stock_qty = qty * pending_percent
 				return
 
-	def should_pick_order_item(item) -> bool:
-		return (
-			abs(item.delivered_qty) < abs(item.qty)
-			and item.delivered_by_supplier != 1
-			and not is_product_bundle(item.item_code)
+	def should_pick_order_item(item, items=None) -> bool:
+		conditions = [
+			abs(item.delivered_qty) < abs(item.qty),
+			item.delivered_by_supplier != 1,
+			not is_product_bundle(item.item_code),
+		]
+
+		if isinstance(items, list):
+			conditions.append(item.name in items)
+
+		return all(conditions)
+
+	def map_doc(parent_warehouse=None, items=None):
+		doc = get_mapped_doc(
+			"Sales Order",
+			source_name,
+			{
+				"Sales Order": {"doctype": "Pick List", "validation": {"docstatus": ["=", 1]}},
+				"Sales Order Item": {
+					"doctype": "Pick List Item",
+					"field_map": {"parent": "sales_order", "name": "sales_order_item"},
+					"postprocess": update_item_quantity,
+					"condition": lambda item: should_pick_order_item(item, items),
+				},
+				"Packed Item": {
+					"doctype": "Pick List Item",
+					"field_map": {
+						"parent": "sales_order",
+						"name": "sales_order_item",
+						"parent_detail_docname": "product_bundle_item",
+					},
+					"field_no_map": ["picked_qty"],
+					"postprocess": update_packed_item_qty,
+				},
+			},
+			target_doc,
 		)
 
-	doc = get_mapped_doc(
-		"Sales Order",
-		source_name,
-		{
-			"Sales Order": {"doctype": "Pick List", "validation": {"docstatus": ["=", 1]}},
-			"Sales Order Item": {
-				"doctype": "Pick List Item",
-				"field_map": {"parent": "sales_order", "name": "sales_order_item"},
-				"postprocess": update_item_quantity,
-				"condition": should_pick_order_item,
-			},
-			"Packed Item": {
-				"doctype": "Pick List Item",
-				"field_map": {
-					"parent": "sales_order",
-					"name": "sales_order_item",
-					"parent_detail_docname": "product_bundle_item",
-				},
-				"field_no_map": ["picked_qty"],
-				"postprocess": update_packed_item_qty,
-			},
-		},
-		target_doc,
+		doc.parent_warehouse = parent_warehouse
+		doc.purpose = "Delivery"
+
+		doc.set_item_locations()
+
+		return doc
+
+	so_item_by_warehouse = defaultdict(list)
+	for name, warehouse in frappe.get_all(
+		"Sales Order Item",
+		{"parenttype": "Sales Order", "parentfield": "items", "parent": source_name},
+		["name", "warehouse"],
+		as_list=True,
+	):
+		so_item_by_warehouse[warehouse].append(name)
+
+	warehouses_is_group = frappe.get_all(
+		"Warehouse", {"name": ["IN", so_item_by_warehouse.keys()]}, ["is_group"], pluck="is_group"
 	)
+	if len(Counter(warehouses_is_group)) > 1:
+		frappe.throw(_("All items must be a group warehouse or a non-group warehouse."))
 
-	doc.purpose = "Delivery"
+	if len(warehouses_is_group) > 1 and warehouses_is_group[0]:
+		docs = []
+		for warehouse, items in so_item_by_warehouse.items():
+			docs.append(map_doc(warehouse, items).save())
 
-	doc.set_item_locations()
+		frappe.msgprint(_("Pick List(s) Created!"))
+		return docs
 
-	return doc
+	return map_doc()
 
 
 def update_produced_qty_in_so_item(sales_order, sales_order_item):
