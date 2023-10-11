@@ -697,6 +697,8 @@ def make_delivery_note(source_name, target_doc=None, skip_item_mapping=False):
 	if not skip_item_mapping:
 
 		def condition(doc):
+			if not doc.item_code:
+				return False
 			# make_mapped_doc sets js `args` into `frappe.flags.args`
 			if frappe.flags.args and frappe.flags.args.delivery_dates:
 				if cstr(doc.delivery_date) not in frappe.flags.args.delivery_dates:

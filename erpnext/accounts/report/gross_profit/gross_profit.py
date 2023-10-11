@@ -635,6 +635,9 @@ class GrossProfitGenerator(object):
 		return 0.0
 
 	def get_buying_amount(self, row, item_code):
+		if row.incoming_rate is None:
+			frappe.throw(str(row))
+		return row.incoming_rate * row.qty
 		# IMP NOTE
 		# stock_ledger_entries should already be filtered by item_code and warehouse and
 		# sorted by posting_date desc, posting_time desc
@@ -800,7 +803,8 @@ class GrossProfitGenerator(object):
 				`tabSales Invoice Item`.delivery_note, `tabSales Invoice Item`.stock_qty as qty,
 				`tabSales Invoice Item`.base_net_rate, `tabSales Invoice Item`.base_net_amount,
 				`tabSales Invoice Item`.name as "item_row", `tabSales Invoice`.is_return,
-				`tabSales Invoice Item`.cost_center
+				`tabSales Invoice Item`.cost_center,
+				`tabSales Invoice Item`.incoming_rate
 				{sales_person_cols}
 				{payment_term_cols}
 			from
