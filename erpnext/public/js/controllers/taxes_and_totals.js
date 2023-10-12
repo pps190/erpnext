@@ -292,7 +292,11 @@ erpnext.taxes_and_totals = class TaxesAndTotals extends erpnext.payments {
 		this.frm.doc.total_qty = this.frm.doc.total = this.frm.doc.base_total = this.frm.doc.net_total = this.frm.doc.base_net_total = 0.0;
 
 		$.each(this.frm._items || [], function(i, item) {
-			me.frm.doc.total += item.amount;
+			if (item.core_rate && me.frm.doc.docstatus === 0) {
+				me.frm.doc.total += item.amount + (item.core_rate * item.qty);
+			} else {
+				me.frm.doc.total += item.amount;
+			}
 			me.frm.doc.total_qty += item.qty;
 			me.frm.doc.base_total += item.base_amount;
 			me.frm.doc.net_total += item.net_amount;
