@@ -812,9 +812,10 @@ class SalesInvoice(SellingController):
 				frappe.throw(_("Paid amount + Write Off Amount can not be greater than Grand Total"))
 
 	def validate_item_code(self):
-		for d in self.get("items"):
-			if not d.item_code and self.is_opening == "No":
-				msgprint(_("Item Code required at Row No {0}").format(d.idx), raise_exception=True)
+		return
+		# for d in self.get("items"):
+		# 	if not d.item_code and self.is_opening == "No":
+		# 		msgprint(_("Item Code required at Row No {0}").format(d.idx), raise_exception=True)
 
 	def validate_warehouse(self):
 		super(SalesInvoice, self).validate_warehouse()
@@ -1941,7 +1942,11 @@ def make_delivery_note(source_name, target_doc=None):
 def make_sales_return(source_name, target_doc=None):
 	from erpnext.controllers.sales_and_purchase_return import make_return_doc
 
-	return make_return_doc("Sales Invoice", source_name, target_doc)
+	doc = make_return_doc("Sales Invoice", source_name, target_doc)
+	doc.apa_return_against = doc.return_against
+	doc.apa_return_against_date = frappe.db.get_value(doc.doctype, doc.return_against, "posting_date")
+	doc.return_against = None
+	return doc
 
 
 def set_account_for_mode_of_payment(self):

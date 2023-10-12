@@ -766,7 +766,8 @@ frappe.ui.form.on('Sales Invoice', {
 
 	update_stock: function(frm, dt, dn) {
 		frm.events.hide_fields(frm);
-		frm.fields_dict.items.grid.toggle_reqd("item_code", frm.doc.update_stock);
+		// frm.fields_dict.items.grid.toggle_reqd("item_code", frm.doc.update_stock);
+		frm.fields_dict.items.grid.toggle_reqd("item_code", 0);
 		frm.trigger('reset_posting_time');
 	},
 
