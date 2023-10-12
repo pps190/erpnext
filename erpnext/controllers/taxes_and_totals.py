@@ -330,7 +330,7 @@ class calculate_taxes_and_totals(object):
 		) = self.doc.base_total = self.doc.net_total = self.doc.base_net_total = 0.0
 
 		for item in self._items:
-			if item.core_rate and self.doc.docstatus == 0:
+			if hasattr(item, "core_rate") and item.core_rate and self.doc.docstatus == 0:
 				self.doc.total += item.amount + (item.core_rate * item.qty)
 			else:
 				self.doc.total += item.amount
