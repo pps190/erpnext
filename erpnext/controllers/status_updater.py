@@ -319,6 +319,8 @@ class StatusUpdater(Document):
 
 	def limits_crossed_error(self, args, item, qty_or_amount):
 		"""Raise exception for limits crossed"""
+		if self.doctype in ["Purchase Invoice", "Purchase Receipt"]:
+			return
 		if (
 			self.doctype in ["Sales Invoice", "Delivery Note"]
 			and qty_or_amount == "amount"
