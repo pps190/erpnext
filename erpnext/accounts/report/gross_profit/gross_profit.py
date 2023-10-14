@@ -740,7 +740,7 @@ class GrossProfitGenerator(object):
 		return flt(last_purchase_rate[0][0]) if last_purchase_rate else 0
 
 	def load_invoice_items(self):
-		conditions = ""
+		conditions = " and `tabSales Invoice Item`.`is_core` = 0"
 		if self.filters.company:
 			conditions += " and `tabSales Invoice`.company = %(company)s"
 		if self.filters.from_date:
