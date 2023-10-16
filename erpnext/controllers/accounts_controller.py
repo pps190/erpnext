@@ -1963,10 +1963,14 @@ class AccountsController(TransactionBase):
 			po_or_so_doctype = "Sales Order"
 			po_or_so_doctype_name = "sales_order"
 
-		else:
+		elif len(self.get("items")) > 0:
 			po_or_so = self.get("items")[0].get("purchase_order")
 			po_or_so_doctype = "Purchase Order"
 			po_or_so_doctype_name = "purchase_order"
+		else:
+			po_or_so = ""
+			po_or_so_doctype = ""
+			po_or_so_doctype_name = ""
 
 		return po_or_so, po_or_so_doctype, po_or_so_doctype_name
 
