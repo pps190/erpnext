@@ -14,7 +14,8 @@
 			{%= filters.customer_name %}
 		{% } else { %}
 			{%= filters.customer || filters.supplier %}
-		{% } %}
+		{% } %} <br>
+			{%= filters.party %}
 	</h4>
 	<h6 class="text-center">
 			{% if (filters.tax_id) { %}
@@ -138,7 +139,7 @@
 						<th style="width: 14%">{%= __("Reference") %}</th>
 						<th style="width: 10%">{%= __("Sales Person") %}</th>
 					{% } else { %}
-						<th style="width: 24%">{%= __("Reference") %}</th>
+						<th style="width: 10%">{%= __("Reference") %}</th>
 					{% } %}
 					{% if(!filters.show_future_payments) { %}
 						<th style="width: 20%">{%= (filters.customer || filters.supplier) ? __("Remarks"): __("Party") %}</th>
@@ -174,11 +175,12 @@
 						<td>{%= frappe.datetime.str_to_user(data[i]["posting_date"]) %}</td>
 						<td style="text-align: right">{%= data[i]["age"] %}</td>
 						<td>
-							{% if(!filters.show_future_payments) { %}
-								{%= data[i]["voucher_type"] %}
-								<br>
+							{%= data[i]["voucher_no"] %} /
+							{% if (data[i]["warehouse"] === "01 - Receiving - APA") { %}
+								1
+							{% } else if (data[i]["warehouse"] === "02 - Receiving - APA") { %}
+								2
 							{% } %}
-							{%= data[i]["voucher_no"] %}
 						</td>
 
 						{% if(report.report_name === "Accounts Receivable" && filters.show_sales_person) { %}
@@ -197,7 +199,6 @@
 							{% } %}
 							<div>
 							{% if data[i]["remarks"] %}
-								{%= __("Remarks") %}:
 								{%= data[i]["remarks"] %}
 							{% } %}
 							</div>

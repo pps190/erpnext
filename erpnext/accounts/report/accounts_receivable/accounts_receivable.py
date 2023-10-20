@@ -126,6 +126,7 @@ class ReceivablePayableReport(object):
 				self.voucher_balance[key] = frappe._dict(
 					voucher_type=ple.voucher_type,
 					voucher_no=ple.voucher_no,
+					warehouse=ple.warehouse,
 					party=ple.party,
 					party_account=ple.account,
 					posting_date=ple.posting_date,
@@ -281,6 +282,13 @@ class ReceivablePayableReport(object):
 
 			row.invoice_grand_total = row.invoiced
 
+			if row.voucher_type == "Sales Invoice":
+				data = frappe.db.get_value(row.voucher_type, row.voucher_no, ["vehicle", "vin", "reference", "po_no"])
+				row.remarks = ""
+				for d in data:
+					if d and d != "null":
+						row.remarks += d + "\n"
+
 			must_consider = False
 			if self.filters.get("for_revaluation_journals"):
 				if (abs(row.outstanding) > 0.0 / 10**self.currency_precision) or (
@@ -301,6 +309,7 @@ class ReceivablePayableReport(object):
 					# is an invoice, allocate based on fifo
 					# adds a list `payment_terms` which contains new rows for each term
 					self.allocate_outstanding_based_on_payment_terms(row)
+
 
 					if row.payment_terms:
 						# make separate rows for each payment term
@@ -738,6 +747,7 @@ class ReceivablePayableReport(object):
 			self.qb_selection_filter.append(self.ple.posting_date.lte(self.filters.report_date))
 
 		ple = qb.DocType("Payment Ledger Entry")
+		si = qb.DocType("Sales Invoice")
 		query = (
 			qb.from_(ple)
 			.select(
@@ -745,6 +755,7 @@ class ReceivablePayableReport(object):
 				ple.account,
 				ple.voucher_type,
 				ple.voucher_no,
+				si.set_warehouse.as_("warehouse"),
 				ple.against_voucher_type,
 				ple.against_voucher_no,
 				ple.party_type,
@@ -854,13 +865,7 @@ class ReceivablePayableReport(object):
 		self.customer = qb.DocType("Customer")
 
 		if self.filters.get("customer_group"):
-			groups = get_customer_group_with_children(self.filters.customer_group)
-			customers = (
-				qb.from_(self.customer)
-				.select(self.customer.name)
-				.where(self.customer["customer_group"].isin(groups))
-			)
-			self.qb_selection_filter.append(self.ple.party.isin(customers))
+			self.get_hierarchical_filters("Customer Group", "customer_group")
 
 		if self.filters.get("territory"):
 			self.get_hierarchical_filters("Territory", "territory")
@@ -958,7 +963,7 @@ class ReceivablePayableReport(object):
 
 	def get_columns(self):
 		self.columns = []
-		self.add_column("Posting Date", fieldtype="Date")
+		self.add_column("Posting Date", fieldtype="Date", width=180)
 		self.add_column(
 			label="Party Type",
 			fieldname="party_type",
@@ -970,14 +975,14 @@ class ReceivablePayableReport(object):
 			fieldname="party",
 			fieldtype="Dynamic Link",
 			options="party_type",
-			width=180,
+			width=80,
 		)
 		self.add_column(
 			label=self.account_type + " Account",
 			fieldname="party_account",
 			fieldtype="Link",
 			options="Account",
-			width=180,
+			width=100,
 		)
 
 		if self.party_naming_by == "Naming Series":
@@ -991,21 +996,23 @@ class ReceivablePayableReport(object):
 				label=label,
 				fieldname=fieldname,
 				fieldtype="Data",
+				width=180,
 			)
 
-		if self.account_type == "Receivable":
-			self.add_column(
-				_("Customer Contact"),
-				fieldname="customer_primary_contact",
-				fieldtype="Link",
-				options="Contact",
-			)
+#		if self.account_type == "Receivable":
+#			self.add_column(
+#				_("Customer Contact"),
+#				fieldname="customer_primary_contact",
+#				fieldtype="Link",
+#				options="Contact",
+#			)
 		if self.filters.party_type == "Customer":
 			self.add_column(
 				_("Customer Name"),
 				fieldname="customer_name",
 				fieldtype="Link",
 				options="Customer",
+				width=180
 			)
 		elif self.filters.party_type == "Supplier":
 			self.add_column(
@@ -1015,14 +1022,14 @@ class ReceivablePayableReport(object):
 				options="Supplier",
 			)
 
-		self.add_column(label=_("Cost Center"), fieldname="cost_center", fieldtype="Data")
+#		self.add_column(label=_("Cost Center"), fieldname="cost_center", fieldtype="Data")
 		self.add_column(label=_("Voucher Type"), fieldname="voucher_type", fieldtype="Data")
 		self.add_column(
 			label=_("Voucher No"),
 			fieldname="voucher_no",
 			fieldtype="Dynamic Link",
 			options="voucher_type",
-			width=180,
+			width=80,
 		)
 
 		self.add_column(label="Due Date", fieldtype="Date")
@@ -1056,7 +1063,7 @@ class ReceivablePayableReport(object):
 			self.add_column(label=_("Remaining Balance"), fieldname="remaining_balance")
 
 		if self.filters.account_type == "Receivable":
-			self.add_column(label=_("Customer LPO"), fieldname="po_no", fieldtype="Data")
+#			self.add_column(label=_("Customer LPO"), fieldname="po_no", fieldtype="Data")
 
 			# comma separated list of linked delivery notes
 			if self.filters.show_delivery_notes:

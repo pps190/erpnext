@@ -6,6 +6,24 @@ frappe.provide("erpnext.utils");
 frappe.query_reports["Accounts Receivable"] = {
 	"filters": [
 		{
+			"fieldname": "customer",
+			"fieldtype": "Data",
+			"label": __("Customer"),
+			"hidden": 1,
+		},
+		{
+			"fieldname": "customer_name",
+			"fieldtype": "Data",
+			"label": __("Customer Name"),
+			"hidden": 1,
+		},
+		{
+			"fieldname": "payment_terms",
+			"fieldtype": "Data",
+			"label": __("Payment Terms"),
+			"hidden": 1,
+		},
+		{
 			"fieldname": "company",
 			"label": __("Company"),
 			"fieldtype": "Link",
@@ -61,6 +79,21 @@ frappe.query_reports["Accounts Receivable"] = {
 
 				return frappe.db.get_link_options(party_type, txt);
 			},
+			on_change: () => {
+				const party_type = frappe.query_report.get_filter_value('party_type');
+				if (party_type != 'Customer') return;
+				const customer = frappe.query_report.get_filter_value('party');
+				frappe.query_report.set_filter_value('customer', customer[0]);
+				if (customer) {
+					frappe.db.get_value('Customer', customer[0], ['customer_name', 'payment_terms'], function(value) {
+						frappe.query_report.set_filter_value('customer_name', value.customer_name);
+						frappe.query_report.set_filter_value('payment_terms', value.payment_terms);
+					});
+				} else {
+					frappe.query_report.set_filter_value('customer_name', '');
+					frappe.query_report.set_filter_value('payment_terms', '');
+				}
+			},
 		},
 		{
 			"fieldname": "party_account",
@@ -76,6 +109,9 @@ frappe.query_reports["Accounts Receivable"] = {
 						'is_group': 0
 					}
 				};
+			},
+			onchange: function () {
+				console.log(this);
 			}
 		},
 		{
@@ -204,6 +240,8 @@ frappe.query_reports["Accounts Receivable"] = {
 			var filters = report.get_values();
 			frappe.set_route('query-report', 'Accounts Receivable Summary', {company: filters.company});
 		});
+
+		report.get_filter("party").on_change();
 	}
 }
 
