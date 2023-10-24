@@ -2777,6 +2777,7 @@ def set_order_defaults(
 
 	for field in ("item_code", "item_name", "description", "item_group"):
 		child_item.update({field: item.get(field)})
+		child_item.item_code = trans_item["item_code"]
 
 	date_fieldname = "delivery_date" if child_doctype == "Sales Order Item" else "schedule_date"
 	child_item.update({date_fieldname: trans_item.get(date_fieldname) or p_doc.get(date_fieldname)})
