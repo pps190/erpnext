@@ -45,7 +45,7 @@ class Analytics(object):
 		# Skipping total row for tree-view reports
 		skip_total_row = 0
 
-		if self.filters.tree_type in ["Supplier Group", "Item Group", "Customer Group", "Territory"]:
+		if self.filters.tree_type in ["Supplier Group", "Item Group", "Customer Group", "Territory", "Warehouse"]:
 			skip_total_row = 1
 
 		return self.columns, self.data, None, self.chart, None, skip_total_row
@@ -100,7 +100,7 @@ class Analytics(object):
 			self.get_sales_transactions_based_on_items()
 			self.get_rows()
 
-		elif self.filters.tree_type in ["Customer Group", "Supplier Group", "Territory"]:
+		elif self.filters.tree_type in ["Customer Group", "Supplier Group", "Territory", "Warehouse"]:
 			self.get_sales_transactions_based_on_customer_or_territory_group()
 			self.get_rows_by_group()
 
@@ -200,6 +200,8 @@ class Analytics(object):
 		elif self.filters.tree_type == "Supplier Group":
 			entity_field = "supplier as entity"
 			self.get_supplier_parent_child_map()
+		elif self.filters.tree_type == "Warehouse":
+			entity_field = "set_warehouse as entity"
 		else:
 			entity_field = "territory as entity"
 
@@ -366,6 +368,8 @@ class Analytics(object):
 			parent = "parent_item_group"
 		if self.filters.tree_type == "Supplier Group":
 			parent = "parent_supplier_group"
+		if self.filters.tree_type == "Warehouse":
+			parent = "parent_warehouse"
 
 		self.depth_map = frappe._dict()
 

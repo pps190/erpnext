@@ -8,15 +8,15 @@ frappe.query_reports["Sales Analytics"] = {
 			fieldname: "tree_type",
 			label: __("Tree Type"),
 			fieldtype: "Select",
-			options: ["Customer Group", "Customer", "Item Group", "Item", "Territory", "Order Type", "Project"],
-			default: "Customer",
+			options: ["Warehouse"],
+			default: "Warehouse",
 			reqd: 1
 		},
 		{
 			fieldname: "doc_type",
 			label: __("based_on"),
 			fieldtype: "Select",
-			options: ["Sales Order","Delivery Note","Sales Invoice"],
+			options: ["Sales Invoice"],
 			default: "Sales Invoice",
 			reqd: 1
 		},
