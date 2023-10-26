@@ -309,7 +309,7 @@ def get_returned_qty_map_for_row(return_against, party, row_name, doctype):
 		doctype,
 		fields=fields,
 		filters=[
-			[doctype, "return_against", "=", return_against],
+			[doctype, "apa_return_against", "=", return_against],
 			[doctype, party_type, "=", party],
 			[doctype, "docstatus", "=", 1],
 			[doctype, "is_return", "=", 1],
