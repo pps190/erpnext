@@ -331,17 +331,15 @@ class calculate_taxes_and_totals(object):
 
 		for item in self._items:
 			if hasattr(item, "core_rate") and item.core_rate and self.doc.docstatus == 0:
-				self.doc.total += item.amount + (item.core_rate * item.qty)
-				self.doc.total_qty += item.qty
-				self.doc.base_total += item.base_amount + (item.core_rate * item.qty)
-				self.doc.net_total += item.net_amount + (item.core_rate * item.qty)
-				self.doc.base_net_total += item.base_net_amount + (item.core_rate * item.qty)
-			else:
-				self.doc.total += item.amount
-				self.doc.total_qty += item.qty
-				self.doc.base_total += item.base_amount
-				self.doc.net_total += item.net_amount
-				self.doc.base_net_total += item.base_net_amount
+				item.amount += (item.core_rate * item.qty)
+				item.base_amount += (item.core_rate * item.qty)
+				item.net_amount += (item.core_rate * item.qty)
+				item.base_net_amount += (item.core_rate * item.qty)
+			self.doc.total += item.amount
+			self.doc.total_qty += item.qty
+			self.doc.base_total += item.base_amount
+			self.doc.net_total += item.net_amount
+			self.doc.base_net_total += item.base_net_amount
 
 		self.doc.round_floats_in(self.doc, ["total", "base_total", "net_total", "base_net_total"])
 
