@@ -479,7 +479,7 @@ class BuyingController(SubcontractingController):
 		stock_items = self.get_stock_items()
 
 		for d in self.get("items"):
-			if d.item_code not in stock_items:
+			if d.item_code not in stock_items or hasattr(d, "is_core") and d.is_core:
 				continue
 
 			rejected_qty = 0.0
