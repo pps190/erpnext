@@ -287,6 +287,7 @@ class ReceivablePayableReport(object):
 				row.remarks = ""
 				for d in data:
 					if d and d != "null":
+						d = d[:32]
 						row.remarks += d + "\n"
 
 			must_consider = False
