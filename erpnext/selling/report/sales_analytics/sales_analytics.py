@@ -60,24 +60,13 @@ class Analytics(object):
 				"width": 140 if self.filters.tree_type != "Order Type" else 200,
 			}
 		]
-		if self.filters.tree_type in ["Customer", "Supplier", "Item"]:
+		if self.filters.tree_type in ["Customer", "Supplier"]:
 			self.columns.append(
 				{
 					"label": _(self.filters.tree_type + " Name"),
 					"fieldname": "entity_name",
 					"fieldtype": "Data",
 					"width": 140,
-				}
-			)
-
-		if self.filters.tree_type == "Item":
-			self.columns.append(
-				{
-					"label": _("UOM"),
-					"fieldname": "stock_uom",
-					"fieldtype": "Link",
-					"options": "UOM",
-					"width": 100,
 				}
 			)
 
@@ -101,7 +90,7 @@ class Analytics(object):
 			self.get_rows()
 
 		elif self.filters.tree_type == "Brand":
-			self.get_sales_transactions_based_on_items(fieldname="brand")
+			self.get_sales_transactions_based_on_items(fieldname="item.brand")
 			self.get_rows()
 
 		elif self.filters.tree_type in ["Customer Group", "Supplier Group", "Territory", "Warehouse"]:
@@ -169,7 +158,7 @@ class Analytics(object):
 		for d in self.entries:
 			self.entity_names.setdefault(d.entity, d.entity_name)
 
-	def get_sales_transactions_based_on_items(self, fieldname="item_code"):
+	def get_sales_transactions_based_on_items(self, fieldname="CONCAT(item.brand, ': ', item.item_code)"):
 
 		if self.filters["value_quantity"] == "Value":
 			value_field = "base_net_amount"
@@ -178,9 +167,9 @@ class Analytics(object):
 
 		self.entries = frappe.db.sql(
 			"""
-			select i.{fieldname} as entity, i.item_name as entity_name, i.stock_uom, i.{value_field} as value_field, s.{date_field}
-			from `tab{doctype} Item` i , `tab{doctype}` s
-			where s.name = i.parent and i.docstatus = 1 and s.company = %s
+			select {fieldname} as entity, i.item_name as entity_name, i.stock_uom, i.{value_field} as value_field, s.{date_field}
+			from `tab{doctype} Item` i , `tab{doctype}` s, tabItem item
+			where s.name = i.parent and i.docstatus = 1 and item.name = i.item_code and s.company = %s
 			and s.{date_field} between %s and %s
 		""".format(
 				fieldname=fieldname, date_field=self.date_field, value_field=value_field, doctype=self.filters.doc_type
