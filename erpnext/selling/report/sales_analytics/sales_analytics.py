@@ -100,6 +100,10 @@ class Analytics(object):
 			self.get_sales_transactions_based_on_items()
 			self.get_rows()
 
+		elif self.filters.tree_type == "Brand":
+			self.get_sales_transactions_based_on_items(fieldname="brand")
+			self.get_rows()
+
 		elif self.filters.tree_type in ["Customer Group", "Supplier Group", "Territory", "Warehouse"]:
 			self.get_sales_transactions_based_on_customer_or_territory_group()
 			self.get_rows_by_group()
@@ -165,7 +169,7 @@ class Analytics(object):
 		for d in self.entries:
 			self.entity_names.setdefault(d.entity, d.entity_name)
 
-	def get_sales_transactions_based_on_items(self):
+	def get_sales_transactions_based_on_items(self, fieldname="item_code"):
 
 		if self.filters["value_quantity"] == "Value":
 			value_field = "base_net_amount"
@@ -174,12 +178,12 @@ class Analytics(object):
 
 		self.entries = frappe.db.sql(
 			"""
-			select i.item_code as entity, i.item_name as entity_name, i.stock_uom, i.{value_field} as value_field, s.{date_field}
+			select i.{fieldname} as entity, i.item_name as entity_name, i.stock_uom, i.{value_field} as value_field, s.{date_field}
 			from `tab{doctype} Item` i , `tab{doctype}` s
 			where s.name = i.parent and i.docstatus = 1 and s.company = %s
 			and s.{date_field} between %s and %s
 		""".format(
-				date_field=self.date_field, value_field=value_field, doctype=self.filters.doc_type
+				fieldname=fieldname, date_field=self.date_field, value_field=value_field, doctype=self.filters.doc_type
 			),
 			(self.filters.company, self.filters.from_date, self.filters.to_date),
 			as_dict=1,
