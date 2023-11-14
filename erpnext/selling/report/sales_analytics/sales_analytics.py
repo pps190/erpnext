@@ -47,6 +47,19 @@ class Analytics(object):
 
 		if self.filters.tree_type in ["Supplier Group", "Item Group", "Customer Group", "Territory", "Warehouse"]:
 			skip_total_row = 1
+		elif self.filters.tree_type == "Item":
+			self.columns.insert(0, {
+				"fieldname": "brand",
+				"label": _("Brand"),
+				"fieldtype": "Data",
+				"width": 50,
+			})
+			for row in self.data:
+				brand, item_code = row["entity"].split(":")
+				brand = brand.strip()
+				item_code = item_code.strip()
+				row["brand"] = brand
+				row["entity"] = item_code
 
 		return self.columns, self.data, None, self.chart, None, skip_total_row
 
