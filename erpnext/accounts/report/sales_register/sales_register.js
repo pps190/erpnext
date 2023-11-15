@@ -64,7 +64,12 @@ frappe.query_reports["Sales Register"] = {
 			"label": __("Item Group"),
 			"fieldtype": "Link",
 			"options": "Item Group"
-		}
+		},
+		{
+			"fieldname": "include_credit",
+			"label": __("Include Credit Notes"),
+			"fieldtype": "Check",
+		},
 	]
 }
 

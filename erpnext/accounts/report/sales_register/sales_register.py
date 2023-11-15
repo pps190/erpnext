@@ -356,6 +356,9 @@ def get_conditions(filters):
 	if filters.get("owner"):
 		conditions += " and owner = %(owner)s"
 
+	if not filters.get("include_credit"):
+		conditions += " and is_return = 0"
+
 	def get_sales_invoice_item_field_condition(field, table="Sales Invoice Item") -> str:
 		if not filters.get(field) or field in accounting_dimensions_list:
 			return ""
