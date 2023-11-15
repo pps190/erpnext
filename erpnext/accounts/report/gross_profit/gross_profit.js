@@ -35,8 +35,8 @@ frappe.query_reports["Gross Profit"] = {
 			"fieldname": "group_by",
 			"label": __("Group By"),
 			"fieldtype": "Select",
-			"options": "Invoice\nItem Code\nItem Group\nBrand\nWarehouse\nCustomer\nCustomer Group\nTerritory\nSales Person\nProject\nMonthly\nPayment Term",
-			"default": "Invoice"
+			"options": "\nWarehouse",
+			"default": "Warehouse"
 		},
 		{
 			"fieldname": "item_group",
