@@ -488,7 +488,7 @@ class SellingController(StockController):
 		sl_entries = []
 		# Loop over items and packed items table
 		for d in self.get_item_list():
-			if not d.item_code:
+			if not d.item_code or not self.update_stock and not d.item_row.is_core:
 				continue
 
 			if frappe.get_cached_value("Item", d.item_code, "is_stock_item") == 1 and flt(d.qty):
