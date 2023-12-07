@@ -1395,7 +1395,7 @@ def get_valuation_rate(
 
 	if not valuation_rate:
 		# try Item Standard rate
-		valuation_rate = frappe.db.get_value("Item", item_code, "standard_rate")
+		valuation_rate = frappe.db.get_value("Item", item_code, "core_replacement" if warehouse == "CORE - APA" else "standard_rate")
 
 		if not valuation_rate:
 			# try in price list

@@ -140,6 +140,10 @@ class StockController(AccountsController):
 		warehouse_with_no_account = []
 		precision = self.get_debit_field_precision()
 		for item_row in voucher_details:
+			if hasattr(self, "update_stock") and cint(self.update_stock) == 0 and not hasattr(item_row, "is_core"):
+				continue
+			elif hasattr(self, "update_stock") and cint(self.update_stock) == 0 and hasattr(item_row, "is_core") and not item_row.is_core:
+				continue
 			sle_list = sle_map.get(item_row.name)
 			sle_rounding_diff = 0.0
 			if sle_list:

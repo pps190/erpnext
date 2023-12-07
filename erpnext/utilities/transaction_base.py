@@ -162,6 +162,8 @@ class TransactionBase(StatusUpdater):
 		child_table_values = set()
 
 		for row in self.get(child_table):
+			if hasattr(row, "is_core") and row.is_core and child_table_field == "warehouse":
+				continue
 			child_table_values.add(row.get(child_table_field))
 
 		if len(child_table_values) > 1:

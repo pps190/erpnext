@@ -564,6 +564,8 @@ def get_rate_for_return(
 
 	rate = flt(frappe.db.get_value("Stock Ledger Entry", filters, select_field))
 	if not (rate and return_against) and voucher_type in ["Sales Invoice", "Delivery Note"]:
+		if not voucher_detail_no:
+			voucher_detail_no = filters.get("voucher_detail_no")
 		rate = frappe.db.get_value(f"{voucher_type} Item", voucher_detail_no, "incoming_rate")
 
 		if not rate and sle:
@@ -582,6 +584,9 @@ def get_rate_for_return(
 				},
 				raise_error_if_no_rate=False,
 			)
+
+		if not rate and hasattr(item_row, "is_core") and item_row.is_core:
+			rate = frappe.get_value("Item", item_code, "core_replacement")
 
 	return rate
 

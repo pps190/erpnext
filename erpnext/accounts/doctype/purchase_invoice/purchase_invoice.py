@@ -527,6 +527,8 @@ class PurchaseInvoice(BuyingController):
 			from erpnext.stock.doctype.serial_no.serial_no import update_serial_nos_after_submit
 
 			update_serial_nos_after_submit(self, "items")
+		else:
+			self.update_stock_ledger()  # Call here to update stock level on core items.
 
 		# this sequence because outstanding may get -negative
 		self.make_gl_entries()

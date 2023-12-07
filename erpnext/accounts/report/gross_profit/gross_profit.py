@@ -45,9 +45,8 @@ def execute(filters=None):
 				"project",
 			],
 			"item_code": [
-				"item_code",
-				"item_name",
 				"brand",
+				"item_name",
 				"description",
 				"qty",
 				"base_rate",
@@ -488,7 +487,12 @@ class GrossProfitGenerator(object):
 				row.gross_profit_percent = 0.0
 
 			# add to grouped
-			self.grouped.setdefault(row.get(scrub(self.filters.group_by)), []).append(row)
+			group_by = scrub(self.filters.group_by)
+			if group_by == "item_code":
+				group_by = row.get(group_by) + "," + str(row.get("is_core"))
+			else:
+				group_by = row.get(group_by)
+			self.grouped.setdefault(group_by, []).append(row)
 
 		if self.grouped:
 			self.get_average_rate_based_on_group_by()
@@ -635,9 +639,8 @@ class GrossProfitGenerator(object):
 		return 0.0
 
 	def get_buying_amount(self, row, item_code):
-		if row.incoming_rate is None:
-			frappe.throw(str(row))
-		return row.incoming_rate * row.qty
+		if row.incoming_rate is not None:
+			return row.incoming_rate * row.qty
 		# IMP NOTE
 		# stock_ledger_entries should already be filtered by item_code and warehouse and
 		# sorted by posting_date desc, posting_time desc
@@ -648,7 +651,7 @@ class GrossProfitGenerator(object):
 
 		else:
 			my_sle = self.get_stock_ledger_entries(item_code, row.warehouse)
-			if (row.update_stock or row.dn_detail) and my_sle:
+			if (row.update_stock or row.dn_detail or hasattr(row, "is_core") and row.is_core) and my_sle:
 				parenttype, parent = row.parenttype, row.parent
 				if row.dn_detail:
 					parenttype, parent = "Delivery Note", row.delivery_note
@@ -740,7 +743,7 @@ class GrossProfitGenerator(object):
 		return flt(last_purchase_rate[0][0]) if last_purchase_rate else 0
 
 	def load_invoice_items(self):
-		conditions = " and `tabSales Invoice Item`.`is_core` = 0"
+		conditions = ""
 		if self.filters.company:
 			conditions += " and `tabSales Invoice`.company = %(company)s"
 		if self.filters.from_date:
@@ -804,7 +807,8 @@ class GrossProfitGenerator(object):
 				`tabSales Invoice Item`.base_net_rate, `tabSales Invoice Item`.base_net_amount,
 				`tabSales Invoice Item`.name as "item_row", `tabSales Invoice`.is_return,
 				`tabSales Invoice Item`.cost_center,
-				`tabSales Invoice Item`.incoming_rate
+				`tabSales Invoice Item`.incoming_rate,
+				`tabSales Invoice Item`.`is_core`
 				{sales_person_cols}
 				{payment_term_cols}
 			from
@@ -862,7 +866,7 @@ class GrossProfitGenerator(object):
 			# initialize list with a header row for each new parent
 			grouped.setdefault(row.parent, [self.get_invoice_row(row)]).append(
 				row.update(
-					{"indent": 1.0, "parent_invoice": row.parent, "invoice_or_item": row.item_code}
+					{"indent": 1.0, "parent_invoice": row.parent, "invoice_or_item": f"{row.brand}: {row.item_name}"}
 				)  # descendant rows will have indent: 1.0 or greater
 			)
 

@@ -89,7 +89,7 @@ erpnext.accounts.SalesInvoiceController = class SalesInvoiceController extends e
 
 		this.show_general_ledger();
 
-		if(doc.update_stock) this.show_stock_ledger();
+		this.show_stock_ledger();
 
 		if (doc.docstatus == 1 && doc.outstanding_amount!=0
 			&& !(cint(doc.is_return) && doc.return_against)) {

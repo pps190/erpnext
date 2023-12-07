@@ -271,6 +271,8 @@ class SalesInvoice(SellingController):
 		# because updating reserved qty in bin depends upon updated delivered qty in SO
 		if self.update_stock == 1:
 			self.update_stock_ledger()
+		else:
+			self.update_stock_ledger()  # Update for core items.
 		if self.is_return and self.update_stock:
 			update_serial_nos_after_submit(self, "items")
 
@@ -1202,7 +1204,7 @@ class SalesInvoice(SellingController):
 						)
 
 		# expense account gl entries
-		if cint(self.update_stock) and erpnext.is_perpetual_inventory_enabled(self.company):
+		if erpnext.is_perpetual_inventory_enabled(self.company):
 			gl_entries += super(SalesInvoice, self).get_gl_entries()
 
 	def get_asset(self, item):

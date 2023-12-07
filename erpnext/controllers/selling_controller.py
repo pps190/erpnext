@@ -422,7 +422,7 @@ class SellingController(StockController):
 
 		items = self.get("items") + (self.get("packed_items") or [])
 		for d in items:
-			if not self.get("return_against"):
+			if not self.get("apa_return_against"):
 				# Get incoming rate based on original item cost based on valuation method
 				qty = flt(d.get("stock_qty") or d.get("actual_qty"))
 
@@ -472,20 +472,23 @@ class SellingController(StockController):
 							d.discount_amount = 0.0
 							d.margin_rate_or_amount = 0.0
 
-			elif self.get("return_against"):
+			elif self.get("apa_return_against"):
 				# Get incoming rate of return entry from reference document
 				# based on original item cost as per valuation method
 				d.incoming_rate = get_rate_for_return(
-					self.doctype, self.name, d.item_code, self.return_against, item_row=d
+					self.doctype, self.name, d.item_code, self.apa_return_against, item_row=d
 				)
 
 	def update_stock_ledger(self):
 		self.update_reserved_qty()
 
+		if self.name == "INV-00427":
+			print("debug")
+
 		sl_entries = []
 		# Loop over items and packed items table
 		for d in self.get_item_list():
-			if not d.item_code or d.item_row.is_core:
+			if not d.item_code:
 				continue
 
 			if frappe.get_cached_value("Item", d.item_code, "is_stock_item") == 1 and flt(d.qty):
@@ -512,7 +515,8 @@ class SellingController(StockController):
 				):
 					sl_entries.append(self.get_sle_for_source_warehouse(d))
 
-		self.make_sl_entries(sl_entries)
+		if sl_entries:
+			self.make_sl_entries(sl_entries)
 
 	def get_sle_for_source_warehouse(self, item_row):
 		sle = self.get_sl_entries(

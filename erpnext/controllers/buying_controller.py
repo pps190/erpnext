@@ -479,7 +479,15 @@ class BuyingController(SubcontractingController):
 		stock_items = self.get_stock_items()
 
 		for d in self.get("items"):
-			if d.item_code not in stock_items or hasattr(d, "is_core") and d.is_core:
+			if d.item_code not in stock_items:
+				continue
+			elif hasattr(d, "is_core") and d.is_core:
+				d.warehouse = "CORE - APA"
+				if d.parenttype == "Sales Invoice":
+					d.income_account = "CORE - APA"
+				elif d.parenttype == "Purchase Invoice":
+					d.expense_account = "CORE - APA"
+			elif hasattr(self, "update_stock") and not self.update_stock:
 				continue
 
 			rejected_qty = 0.0
@@ -582,11 +590,12 @@ class BuyingController(SubcontractingController):
 		if self.get("is_old_subcontracting_flow"):
 			self.make_sl_entries_for_supplier_warehouse(sl_entries)
 
-		self.make_sl_entries(
-			sl_entries,
-			allow_negative_stock=allow_negative_stock,
-			via_landed_cost_voucher=via_landed_cost_voucher,
-		)
+		if sl_entries:
+			self.make_sl_entries(
+				sl_entries,
+				allow_negative_stock=allow_negative_stock,
+				via_landed_cost_voucher=via_landed_cost_voucher,
+			)
 
 	def update_ordered_and_reserved_qty(self):
 		po_map = {}
