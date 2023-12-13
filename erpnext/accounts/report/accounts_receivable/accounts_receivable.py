@@ -749,6 +749,8 @@ class ReceivablePayableReport(object):
 		si = qb.DocType("Sales Invoice")
 		query = (
 			qb.from_(ple)
+			.left_outer_join(si)
+			.on(si.name == ple.voucher_no)
 			.select(
 				ple.name,
 				ple.account,
