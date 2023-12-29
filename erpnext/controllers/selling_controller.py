@@ -491,6 +491,10 @@ class SellingController(StockController):
 			if not d.item_code or not self.update_stock and not d.item_row.is_core:
 				continue
 
+			if d.item_row.is_core:
+				d.warehouse = "CORE - APA"
+				d.item_row.warehouse = "CORE - APA"
+
 			if frappe.get_cached_value("Item", d.item_code, "is_stock_item") == 1 and flt(d.qty):
 				if flt(d.conversion_factor) == 0.0:
 					d.conversion_factor = (
