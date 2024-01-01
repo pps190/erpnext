@@ -744,7 +744,9 @@ def make_delivery_note(source_name, target_doc=None, skip_item_mapping=False):
 					map_doc(warehouse, items).save())
 			return docs
 
-	return map_doc()
+		return map_doc()
+
+	return get_mapped_doc("Sales Order", source_name, mapper, target_doc, set_missing_values)
 
 
 @frappe.whitelist()
@@ -1384,7 +1386,7 @@ def create_pick_list(source_name, target_doc=None):
 			docs.append(map_doc(warehouse, items).save())
 		return docs
 
-	return map_doc()
+	return map_doc(next(iter(so_item_by_warehouse.keys())))
 
 
 def update_produced_qty_in_so_item(sales_order, sales_order_item):
