@@ -181,7 +181,7 @@
    "no_copy": 1,
    "oldfieldname": "naming_series",
    "oldfieldtype": "Select",
-   "options": "MAT-PRE-.YYYY.-\nMAT-PR-RET-.YYYY.-",
+   "options": "AC.",
    "print_hide": 1,
    "reqd": 1,
    "set_only_once": 1
@@ -1241,7 +1241,7 @@
  "idx": 261,
  "is_submittable": 1,
  "links": [],
- "modified": "2023-07-04 17:23:17.025390",
+ "modified": "2024-02-21 14:31:51.164084",
  "modified_by": "Administrator",
  "module": "Stock",
  "name": "Purchase Receipt",

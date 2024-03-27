@@ -52,7 +52,7 @@ frappe.ui.form.on("Sales Order", {
 
 	refresh: function(frm) {
 		if(frm.doc.docstatus === 1) {
-			if (frm.doc.status !== 'Closed' && flt(frm.doc.per_delivered, 6) < 100 && flt(frm.doc.per_billed, 6) < 100) {
+			if (frm.doc.status !== 'Closed') {
 				frm.add_custom_button(__('Update Items'), () => {
 					erpnext.utils.update_child_items({
 						frm: frm,
@@ -443,10 +443,18 @@ erpnext.selling.SalesOrderController = class SalesOrderController extends erpnex
 	}
 
 	create_pick_list() {
-		frappe.model.open_mapped_doc({
+		frappe.call({
 			method: "erpnext.selling.doctype.sales_order.sales_order.create_pick_list",
-			frm: this.frm
-		})
+			args: {
+				source_name: this.frm.doc.name,
+			},
+			callback({ message }) {
+				if (!$.isArray(message)) {
+					frappe.model.sync(message);
+					frappe.set_route("Form", message.doctype, message.name);
+				}
+			}
+		});
 	}
 
 	make_work_order() {

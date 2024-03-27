@@ -750,8 +750,22 @@ def create_pick_list(source_name, target_doc=None):
 	)
 
 	doc.set_item_locations()
+	items = doc.locations
+	doc.locations = []
+	for loc in batch(items, 20):
+		new_doc = frappe.copy_doc(doc)
+		new_doc.locations = loc
+		for idx, d in enumerate(new_doc.locations, 1):
+			d.idx = idx
+		new_doc.parent_warehouse = frappe.db.get_value("Material Request", source_name, "set_from_warehouse")
+		new_doc.set_item_locations()
+		new_doc.save()
 
-	return doc
+
+def batch(iterable, n=1):
+	l = len(iterable)
+	for ndx in range(0, l, n):
+		yield iterable[ndx:min(ndx + n, l)]
 
 
 @frappe.whitelist()
