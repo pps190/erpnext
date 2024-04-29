@@ -1030,6 +1030,11 @@ class PaymentEntry(AccountsController):
 						is_return and self.party_type in payable_party_types and (self.payment_type == "Receive")
 					):
 						reverse_dr_or_cr = 1
+					elif (
+						self.party_type in payable_party_types and self.payment_type == "Receive" and d.get("allocated_amount") > 0
+					):
+						reverse_dr_or_cr = 1
+						dr_or_cr = "debit" if dr_or_cr == "credit" else "credit"
 
 					if is_return and not reverse_dr_or_cr:
 						dr_or_cr = "debit" if dr_or_cr == "credit" else "credit"
