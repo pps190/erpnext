@@ -137,7 +137,7 @@
    "oldfieldname": "item_code",
    "oldfieldtype": "Data",
    "reqd": 1,
-   "unique": 1
+   "unique": 0
   },
   {
    "depends_on": "variant_of",
