@@ -40,7 +40,7 @@ class CurrencyExchangeSettings(Document):
 			self.set("result_key", [])
 			self.set("req_params", [])
 
-			self.api_endpoint = "https://frankfurter.app/{transaction_date}"
+			self.api_endpoint = "https://api.frankfurter.app/{transaction_date}"
 			self.append("result_key", {"key": "rates"})
 			self.append("result_key", {"key": "{to_currency}"})
 			self.append("req_params", {"key": "base", "value": "{from_currency}"})

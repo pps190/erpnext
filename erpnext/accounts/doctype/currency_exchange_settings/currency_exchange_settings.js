@@ -17,7 +17,7 @@ frappe.ui.form.on('Currency Exchange Settings', {
 				base: '{from_currency}',
 				symbols: '{to_currency}'
 			};
-			add_param(frm, "https://frankfurter.app/{transaction_date}", params, result);
+			add_param(frm, "https://api.frankfurter.app/{transaction_date}", params, result);
 		}
 	}
 });
