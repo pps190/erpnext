@@ -35,3 +35,67 @@ frappe.listview_settings['Material Request'] = {
 		}
 	}
 };
+
+
+/*
+Add upload from excel dialog.
+ */
+function upload_part_material_request_from_excel(listview) {
+	listview.page.add_button(__("Upload"), function () {
+		const dialog = new frappe.ui.Dialog({
+			title: __("Upload Material Transfer Request"),
+			fields: [
+				{
+					fieldname: "material_request_type",
+					label: __("Material Request Type"),
+					fieldtype: "Select",
+					options: frappe.get_meta("Material Request").fields.find(df => df.fieldname === "material_request_type").options,
+					default: "Material Transfer",
+					read_only: 1,
+					reqd: 1,
+				},
+				{
+					fieldname: "set_from_warehouse",
+					label: __("Source Warehouse"),
+					fieldtype: "Link",
+					options: "Warehouse",
+					reqd: 1,
+					depends_on: "eval:doc.material_request_type",
+				},
+				{
+					fieldname: "set_warehouse",
+					label: __("Target Warehouse"),
+					fieldtype: "Link",
+					options: "Warehouse",
+					reqd: 1,
+					depends_on: "eval:doc.set_from_warehouse",
+				},
+				{
+					fieldname: "file_upload",
+					label: __("Upload"),
+					fieldtype: "Attach",
+					reqd: 1,
+					depends_on: "eval:doc.set_warehouse",
+				},
+			],
+			primary_action_label: __("Upload"),
+			primary_action(kwargs) {
+				// TODO: try upload.
+				frappe.call({
+					method: "erpnext.stock.doctype.material_request.material_request.make_material_request_from_upload",
+					args: { kwargs },
+					btn: this,
+					callback({ message }) {
+						frappe.set_route(message);
+					}
+				});
+			},
+			secondary_action_label: __("Cancel"),
+			secondary_action() {
+				dialog.hide();
+			},
+		}).show();
+	});
+}
+
+frappe.listview_settings["Material Request"].onload = upload_part_material_request_from_excel;

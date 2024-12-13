@@ -1,6 +1,6 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and Contributors
 # License: GNU General Public License v3. See license.txt
-
+import datetime
 # ERPNext - web based ERP (http://erpnext.com)
 # For license information, please see license.txt
 
@@ -774,3 +774,47 @@ def make_in_transit_stock_entry(source_name, in_transit_warehouse):
 		row.t_warehouse = in_transit_warehouse
 
 	return ste_doc
+
+
+@frappe.whitelist()
+def make_material_request_from_upload(kwargs: dict[str, str]) -> tuple[str, str, str]:
+	if isinstance(kwargs, str):
+		kwargs = json.loads(kwargs)
+
+	file_upload: str = kwargs.pop("file_upload")
+
+	if ".csv" == file_upload[-4:]:
+		import csv
+		with open(frappe.get_doc("File", {"file_url": file_upload}).get_full_path(), newline="") as fp:
+			contents = list(csv.reader(fp))
+	elif ".xlsx" == file_upload[-5:]:
+		from frappe.utils.xlsxutils import read_xlsx_file_from_attached_file
+		contents = read_xlsx_file_from_attached_file(file_upload)
+	elif ".xls" == file_upload[-4:]:
+		from frappe.utils.xlsxutils import read_xls_file_from_attached_file
+		contents = read_xls_file_from_attached_file(file_upload)
+	else:
+		frappe.throw(".csv, .xls, .xlsx are the allowed file types.")
+
+	doc = frappe.new_doc("Material Request")
+	doc.update(kwargs)
+	doc.set("schedule_date", datetime.date.today())
+
+	contents.pop(0)
+	for index, row in enumerate(contents, 2):
+		brand, item_code = row[:2]
+		qty = row[-2]
+		name = frappe.get_value("Item", {"brand": brand, "item_code": item_code}, "name")
+		if not name:
+			frappe.throw("Item {}: {} does not exist at row {}".format(brand, item_code, index))
+		doc.append("items", {
+			"item_code": name,
+			"qty": qty,
+			"conversion_factor": 1,
+			"from_warehouse": kwargs["set_from_warehouse"],
+			"warehouse": kwargs["set_warehouse"],
+		})
+
+	doc.save()
+
+	return ["Form", doc.doctype, doc.name]
