@@ -417,6 +417,7 @@ frappe.ui.form.on('Stock Entry', {
 	},
 
 	set_serial_no: function(frm, cdt, cdn, callback) {
+		return; // we don't user serial no
 		var d = frappe.model.get_doc(cdt, cdn);
 		if(!d.item_code && !d.s_warehouse && !d.qty) return;
 		var	args = {
