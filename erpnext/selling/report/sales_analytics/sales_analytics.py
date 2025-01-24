@@ -54,12 +54,38 @@ class Analytics(object):
 				"fieldtype": "Data",
 				"width": 50,
 			})
+
+			self.columns.append({
+				"fieldname": "actual_qty",
+				"label": "Actual Qty",
+				"fieldtype": "Float",
+				"width": 100,
+			})
+
 			for row in self.data:
 				brand, item_code = row["entity"].split(":")
 				brand = brand.strip()
 				item_code = item_code.strip()
 				row["brand"] = brand
 				row["entity"] = item_code
+				row["actual_qty"] = frappe.db.sql("""
+					SELECT
+						COALESCE(SUM(tabBin.actual_qty), 0)
+					FROM
+						tabBin
+					INNER JOIN
+						tabItem
+					ON
+						tabItem.name = tabBin.item_code
+					INNER JOIN
+						tabWarehouse
+					ON
+						tabWarehouse.name = tabBin.warehouse
+					WHERE
+						tabItem.brand = %s AND
+						tabItem.item_code = %s AND
+						tabWarehouse.warehouse_type IS NULL
+				""", (brand, item_code))[0][0]
 
 		return self.columns, self.data, None, self.chart, None, skip_total_row
 
