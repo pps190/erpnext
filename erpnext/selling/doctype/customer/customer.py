@@ -690,7 +690,7 @@ def make_contact(args, is_primary_contact=1):
 		"is_primary_contact": is_primary_contact,
 		"links": [{"link_doctype": args.get("doctype"), "link_name": args.get("name")}],
 	}
-	if args.customer_type == "Individual":
+	if args.get("customer_type") == "Individual":
 		first, middle, last = parse_full_name(args.get("customer_name"))
 		values.update(
 			{
@@ -702,7 +702,8 @@ def make_contact(args, is_primary_contact=1):
 	else:
 		values.update(
 			{
-				"company_name": args.get("customer_name"),
+				"company_name": args.get("customer_name", args.get("supplier_name")),
+				"first_name": args.get("customer_name", args.get("supplier_name")),
 			}
 		)
 	contact = frappe.get_doc(values)
