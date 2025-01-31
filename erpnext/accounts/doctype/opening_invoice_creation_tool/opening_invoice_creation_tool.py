@@ -107,7 +107,7 @@ class OpeningInvoiceCreationTool(Document):
 			invoice = self.get_invoice_dict(row)
 			company_details = (
 				frappe.get_cached_value(
-					"Company", self.company, ["default_currency", "default_letter_head"], as_dict=1
+					"Company", self.company, ["default_currency", "default_letter_head", "default_receivable_account"], as_dict=1
 				)
 				or {}
 			)
@@ -119,6 +119,7 @@ class OpeningInvoiceCreationTool(Document):
 					{
 						"currency": default_currency or company_details.get("default_currency"),
 						"letter_head": company_details.get("default_letter_head"),
+						"debit_to": company_details.get("default_receivable_account")
 					}
 				)
 			invoices.append(invoice)
