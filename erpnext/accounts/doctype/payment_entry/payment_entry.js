@@ -747,6 +747,11 @@ frappe.ui.form.on('Payment Entry', {
 			},
 			callback: function(r, rt) {
 				if(r.message) {
+					if (r.message.length > 0 && r.message[0].discount_amount) {
+						var d = frm.add_child("deductions");
+						d.amount = r.message[0].discount_amount;
+					}
+
 					var total_positive_outstanding = 0;
 					var total_negative_outstanding = 0;
 
@@ -821,7 +826,7 @@ frappe.ui.form.on('Payment Entry', {
 		var total_deductions = frappe.utils.sum($.map(frm.doc.deductions || [],
 			function(d) { return flt(d.amount) }));
 
-		paid_amount -= total_deductions;
+		paid_amount += total_deductions;
 
 		$.each(frm.doc.references || [], function(i, row) {
 			if(flt(row.outstanding_amount) > 0)
