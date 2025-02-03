@@ -518,7 +518,7 @@ erpnext.utils.update_child_items = function(opts) {
 	const get_precision = (fieldname) => child_meta.fields.find(f => f.fieldname == fieldname).precision;
 
 	this.data = frm.doc[opts.child_docname].map((d) => {
-		return {
+		const t = {
 			"docname": d.name,
 			"name": d.name,
 			"item_code": d.item_code,
@@ -528,7 +528,13 @@ erpnext.utils.update_child_items = function(opts) {
 			"qty": d.qty,
 			"rate": d.rate,
 			"uom": d.uom
+		};
+
+		if (d.parenttype === "Purchase Order") {
+			t["expected_delivery_date"] = d.expected_delivery_date
 		}
+
+		return t;
 	});
 
 	const fields = [{
@@ -618,6 +624,16 @@ erpnext.utils.update_child_items = function(opts) {
 			label: frm.doc.doctype == 'Sales Order' ? __("Delivery Date") : __("Reqd by date"),
 			reqd: 1
 		})
+
+		if (frm.doc.doctype == "Purchase Order") {
+			fields.splice(3, 0, {
+				fieldtype: "Date",
+				fieldname: "expected_delivery_date",
+				label: __("ETA"),
+				in_list_view: 1
+			});
+		}
+
 		fields.splice(3, 0, {
 			fieldtype: 'Float',
 			fieldname: "conversion_factor",
