@@ -422,6 +422,8 @@ class GrossProfitGenerator(object):
 
 		if grouped_by_invoice:
 			buying_amount = 0
+			qty = 0
+			base_net_rate = 0
 
 		for row in reversed(self.si_list):
 			if self.filters.get("group_by") == "Monthly":
@@ -465,9 +467,15 @@ class GrossProfitGenerator(object):
 			if grouped_by_invoice:
 				if row.indent == 1.0:
 					buying_amount += row.buying_amount
+					qty += row.qty
+					base_net_rate += row.base_net_rate
 				elif row.indent == 0.0:
 					row.buying_amount = buying_amount
+					row.qty = qty
+					row.base_net_rate = base_net_rate
 					buying_amount = 0
+					qty = 0
+					base_net_rate = 0
 
 			# get buying rate
 			if flt(row.qty):
