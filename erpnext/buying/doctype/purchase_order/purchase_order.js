@@ -181,7 +181,7 @@ erpnext.buying.PurchaseOrderController = class PurchaseOrderController extends e
 			}
 
 			if(!in_list(["Closed", "Delivered"], doc.status)) {
-				if(this.frm.doc.status !== 'Closed' && flt(this.frm.doc.per_received) < 100 && flt(this.frm.doc.per_billed) < 100) {
+				if(this.frm.doc.status !== 'Closed') {
 					// Don't add Update Items button if the PO is following the new subcontracting flow.
 					if (!(this.frm.doc.is_subcontracted && !this.frm.doc.is_old_subcontracting_flow)) {
 						this.frm.add_custom_button(__('Update Items'), () => {
