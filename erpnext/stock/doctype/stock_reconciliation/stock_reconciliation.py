@@ -743,6 +743,7 @@ def get_items(
 					continue
 
 				args = get_item_data(row, row.qty, valuation_rate)
+				args["qty"] = 0
 				res.append(args)
 		else:
 			stock_bal = get_stock_balance(
@@ -763,7 +764,7 @@ def get_items(
 				continue
 
 			args = get_item_data(d, qty, valuation_rate, serial_no)
-
+			args["qty"] = 0
 			res.append(args)
 
 	return res

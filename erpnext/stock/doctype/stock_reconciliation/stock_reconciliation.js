@@ -45,6 +45,7 @@ frappe.ui.form.on("Stock Reconciliation", {
 
 	refresh: function(frm) {
 		if(frm.doc.docstatus < 1) {
+			frm.set_value("scan_mode", 1);
 			frm.add_custom_button(__("Fetch Items from Warehouse"), function() {
 				frm.events.get_items(frm);
 			});
@@ -56,7 +57,7 @@ frappe.ui.form.on("Stock Reconciliation", {
 	},
 
 	scan_barcode: function(frm) {
-		const barcode_scanner = new erpnext.utils.BarcodeScanner({frm:frm});
+		const barcode_scanner = new erpnext.utils.BarcodeScanner({frm:frm, prompt_qty: 1});
 		barcode_scanner.process_scan();
 	},
 
