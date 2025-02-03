@@ -259,7 +259,7 @@ def _create_bin(item_code, warehouse):
 
 
 @frappe.whitelist()
-def get_incoming_rate(args, raise_error_if_no_rate=True):
+def erpnext_get_incoming_rate(args, raise_error_if_no_rate=True):
 	"""Get Incoming Rate based on valuation method"""
 	from erpnext.stock.stock_ledger import (
 		get_batch_incoming_rate,
@@ -313,6 +313,22 @@ def get_incoming_rate(args, raise_error_if_no_rate=True):
 		)
 
 	return flt(in_rate)
+
+
+@frappe.whitelist()
+def get_incoming_rate(args, raise_error_if_no_rate=True):
+	if "voucher_type" in args and "voucher_no" in args and "sle" in args and args["voucher_type"] == "Delivery Note" and frappe.db.get_value(
+		args["voucher_type"],
+		args["voucher_no"],
+		"is_return"
+	) == 1:
+		dn_detail = frappe.get_value("Stock Ledger Entry", args["sle"], "voucher_detail_no")
+		og_dn_detail = frappe.get_value("Delivery Note Item", dn_detail, "dn_detail")
+		if not og_dn_detail:
+			return erpnext_get_incoming_rate(args, raise_error_if_no_rate)
+		return frappe.get_value("Delivery Note Item", og_dn_detail, "incoming_rate")
+
+	return erpnext_get_incoming_rate(args, raise_error_if_no_rate)
 
 
 def get_avg_purchase_rate(serial_nos):
