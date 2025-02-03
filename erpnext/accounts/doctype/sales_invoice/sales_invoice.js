@@ -109,12 +109,6 @@ erpnext.accounts.SalesInvoiceController = class SalesInvoiceController extends e
 				return item.is_delivered_by_supplier ? true : false;
 			})
 
-			if(doc.outstanding_amount >= 0 || Math.abs(flt(doc.outstanding_amount)) < flt(doc.grand_total)) {
-				cur_frm.add_custom_button(__('Return / Credit Note'),
-					this.make_sales_return, __('Create'));
-				cur_frm.page.set_inner_btn_group_as_primary(__('Create'));
-			}
-
 			if(cint(doc.update_stock)!=1) {
 				// show Make Delivery Note button only if Sales Invoice is not created from Delivery Note
 				var from_delivery_note = false;
@@ -662,7 +656,6 @@ frappe.ui.form.on('Sales Invoice', {
 
 		frm.custom_make_buttons = {
 			'Delivery Note': 'Delivery',
-			'Sales Invoice': 'Return / Credit Note',
 			'Payment Request': 'Payment Request',
 			'Payment Entry': 'Payment'
 		},
