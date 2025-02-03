@@ -165,15 +165,7 @@ class StockEntry(StockController):
 			self.reset_default_field_value("to_warehouse", "items", "t_warehouse")
 
 	def submit(self):
-		if self.is_enqueue_action():
-			frappe.msgprint(
-				_(
-					"The task has been enqueued as a background job. In case there is any issue on processing in background, the system will add a comment about the error on this Stock Entry and revert to the Draft stage"
-				)
-			)
-			self.queue_action("submit", timeout=2000)
-		else:
-			self._submit()
+		self._submit()
 
 	def cancel(self):
 		if self.is_enqueue_action():
