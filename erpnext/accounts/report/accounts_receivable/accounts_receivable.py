@@ -436,7 +436,7 @@ class ReceivablePayableReport(object):
 		# Invoices booked via Journal Entries
 		journal_entries = frappe.db.sql(
 			"""
-			select name, due_date, bill_no, bill_date
+			select name, due_date, bill_no, bill_date, cheque_no, cheque_date
 			from `tabJournal Entry`
 			where posting_date <= %s
 		""",
@@ -445,6 +445,9 @@ class ReceivablePayableReport(object):
 		)
 
 		for je in journal_entries:
+			if not je.bill_no and je.cheque_no:
+				je.bill_no = je.cheque_no
+				je.bill_date = je.cheque_date
 			if je.bill_no:
 				self.invoice_details.setdefault(je.name, je)
 
@@ -643,7 +646,7 @@ class ReceivablePayableReport(object):
 		row.remaining_balance = row.outstanding
 		row.future_amount = 0.0
 		for future in self.future_payments.get((row.voucher_no, row.party), []):
-			if row.remaining_balance > 0 and future.future_amount:
+			if row.remaining_balance != 0 and future.future_amount:
 				if future.future_amount > row.outstanding:
 					row.future_amount = row.outstanding
 					future.future_amount = future.future_amount - row.outstanding
