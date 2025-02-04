@@ -88,6 +88,7 @@ def execute(filters=None):
 			],
 			"customer": [
 				"customer",
+				"customer_name",
 				"customer_group",
 				"qty",
 				"base_rate",
@@ -321,6 +322,12 @@ def get_columns(group_wise_columns, filters):
 				"fieldname": "customer",
 				"fieldtype": "Link",
 				"options": "Customer",
+				"width": 100,
+			},
+			"customer_name": {
+				"label": _("Customer Name"),
+				"fieldname": "customer_name",
+				"fieldtype": "Data",
 				"width": 100,
 			},
 			"customer_group": {
@@ -805,7 +812,7 @@ class GrossProfitGenerator(object):
 				`tabSales Invoice Item`.parenttype, `tabSales Invoice Item`.parent,
 				`tabSales Invoice`.posting_date, `tabSales Invoice`.posting_time,
 				`tabSales Invoice`.project, `tabSales Invoice`.update_stock,
-				`tabSales Invoice`.customer, `tabSales Invoice`.customer_group,
+				`tabSales Invoice`.customer, `tabSales Invoice`.customer_name, `tabSales Invoice`.customer_group,
 				`tabSales Invoice`.territory, `tabSales Invoice Item`.item_code,
 				`tabSales Invoice Item`.item_name, `tabSales Invoice Item`.description,
 				`tabSales Invoice Item`.warehouse, `tabSales Invoice Item`.item_group,
