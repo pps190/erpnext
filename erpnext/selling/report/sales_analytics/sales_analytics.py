@@ -45,8 +45,41 @@ class Analytics(object):
 		# Skipping total row for tree-view reports
 		skip_total_row = 0
 
-		if self.filters.tree_type in ["Supplier Group", "Item Group", "Customer Group", "Territory"]:
+		if self.filters.tree_type in ["Supplier Group", "Item Group", "Customer Group", "Territory", "Warehouse"]:
 			skip_total_row = 1
+		elif self.filters.tree_type == "Item":
+			self.columns.insert(0, {
+				"fieldname": "brand",
+				"label": _("Brand"),
+				"fieldtype": "Data",
+				"width": 50,
+			})
+
+			self.columns.append({
+				"fieldname": "actual_qty",
+				"label": "Actual Qty",
+				"fieldtype": "Float",
+				"width": 100,
+			})
+
+			for row in self.data:
+				row["actual_qty"] = frappe.db.sql("""
+					SELECT
+						COALESCE(SUM(tabBin.actual_qty), 0)
+					FROM
+						tabBin
+					INNER JOIN
+						tabItem
+					ON
+						tabItem.name = tabBin.item_code
+					INNER JOIN
+						tabWarehouse
+					ON
+						tabWarehouse.name = tabBin.warehouse
+					WHERE
+						tabBin.item_code = %s AND
+						tabWarehouse.warehouse_type IS NULL
+				""", (row["entity"]))[0][0]
 
 		return self.columns, self.data, None, self.chart, None, skip_total_row
 
@@ -60,24 +93,13 @@ class Analytics(object):
 				"width": 140 if self.filters.tree_type != "Order Type" else 200,
 			}
 		]
-		if self.filters.tree_type in ["Customer", "Supplier", "Item"]:
+		if self.filters.tree_type in ["Customer", "Supplier"]:
 			self.columns.append(
 				{
 					"label": _(self.filters.tree_type + " Name"),
 					"fieldname": "entity_name",
 					"fieldtype": "Data",
 					"width": 140,
-				}
-			)
-
-		if self.filters.tree_type == "Item":
-			self.columns.append(
-				{
-					"label": _("UOM"),
-					"fieldname": "stock_uom",
-					"fieldtype": "Link",
-					"options": "UOM",
-					"width": 100,
 				}
 			)
 
@@ -100,7 +122,11 @@ class Analytics(object):
 			self.get_sales_transactions_based_on_items()
 			self.get_rows()
 
-		elif self.filters.tree_type in ["Customer Group", "Supplier Group", "Territory"]:
+		elif self.filters.tree_type == "Brand":
+			self.get_sales_transactions_based_on_items(fieldname="item.brand")
+			self.get_rows()
+
+		elif self.filters.tree_type in ["Customer Group", "Supplier Group", "Territory", "Warehouse"]:
 			self.get_sales_transactions_based_on_customer_or_territory_group()
 			self.get_rows_by_group()
 
@@ -165,7 +191,7 @@ class Analytics(object):
 		for d in self.entries:
 			self.entity_names.setdefault(d.entity, d.entity_name)
 
-	def get_sales_transactions_based_on_items(self):
+	def get_sales_transactions_based_on_items(self, fieldname="item.name"):
 
 		if self.filters["value_quantity"] == "Value":
 			value_field = "base_net_amount"
@@ -174,12 +200,12 @@ class Analytics(object):
 
 		self.entries = frappe.db.sql(
 			"""
-			select i.item_code as entity, i.item_name as entity_name, i.stock_uom, i.{value_field} as value_field, s.{date_field}
-			from `tab{doctype} Item` i , `tab{doctype}` s
-			where s.name = i.parent and i.docstatus = 1 and s.company = %s
+			select {fieldname} as entity, i.item_name as entity_name, i.stock_uom, i.{value_field} as value_field, s.{date_field}
+			from `tab{doctype} Item` i , `tab{doctype}` s, tabItem item
+			where s.name = i.parent and i.docstatus = 1 and item.name = i.item_code and s.company = %s
 			and s.{date_field} between %s and %s
 		""".format(
-				date_field=self.date_field, value_field=value_field, doctype=self.filters.doc_type
+				fieldname=fieldname, date_field=self.date_field, value_field=value_field, doctype=self.filters.doc_type
 			),
 			(self.filters.company, self.filters.from_date, self.filters.to_date),
 			as_dict=1,
@@ -200,6 +226,8 @@ class Analytics(object):
 		elif self.filters.tree_type == "Supplier Group":
 			entity_field = "supplier as entity"
 			self.get_supplier_parent_child_map()
+		elif self.filters.tree_type == "Warehouse":
+			entity_field = "set_warehouse as entity"
 		else:
 			entity_field = "territory as entity"
 
@@ -366,6 +394,8 @@ class Analytics(object):
 			parent = "parent_item_group"
 		if self.filters.tree_type == "Supplier Group":
 			parent = "parent_supplier_group"
+		if self.filters.tree_type == "Warehouse":
+			parent = "parent_warehouse"
 
 		self.depth_map = frappe._dict()
 
