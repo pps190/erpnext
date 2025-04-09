@@ -81,7 +81,7 @@ class Analytics(object):
 						tabWarehouse.warehouse_type IS NULL
 				""", (row["entity"]))[0][0]
 
-		return self.columns, self.data, None, self.chart, None, skip_total_row
+		return self.columns, self.data, None, None, None, skip_total_row
 
 	def get_columns(self):
 		self.columns = [
