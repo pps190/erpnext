@@ -221,25 +221,45 @@ class Analytics(object):
 		else:
 			value_field = "total_qty as value_field"
 
+		doc_type = self.filters.doc_type
+		join_tables = ""
+
 		if self.filters.tree_type == "Customer Group":
 			entity_field = "customer_group as entity"
 		elif self.filters.tree_type == "Supplier Group":
 			entity_field = "supplier as entity"
 			self.get_supplier_parent_child_map()
 		elif self.filters.tree_type == "Warehouse":
-			entity_field = "set_warehouse as entity"
+			entity_field = "warehouse as entity"
+			doc_type = doc_type + " Item"
+			if self.filters["value_quantity"] == "Value":
+				value_field = f"`tab{doc_type}`.base_net_amount as value_field"
+			else:
+				value_field = f"`tab{doc_type}`.qty as value_field"
+			join_tables = f"INNER JOIN `tab{self.filters.doc_type}` ON `tab{self.filters.doc_type}`.name = `tab{doc_type}`.parent"
 		else:
 			entity_field = "territory as entity"
 
-		self.entries = frappe.get_all(
-			self.filters.doc_type,
-			fields=[entity_field, value_field, self.date_field],
-			filters={
-				"docstatus": 1,
-				"company": self.filters.company,
-				self.date_field: ("between", [self.filters.from_date, self.filters.to_date]),
-			},
-		)
+		from_table = f"`tab{doc_type}`"
+		fields = ",\n".join([entity_field, value_field, self.date_field])
+		conditions = f"""
+		`tab{self.filters.doc_type}`.docstatus = 1 AND
+		`tab{self.filters.doc_type}`.company = '{self.filters.company}' AND
+		`tab{self.filters.doc_type}`.{self.date_field} BETWEEN '{self.filters.from_date}' AND '{self.filters.to_date}'
+		"""
+
+		self.entries = frappe.db.sql(f"""
+		SELECT
+			{fields}
+		FROM
+			{from_table}
+		{join_tables}
+		WHERE
+			{conditions}
+		ORDER BY
+			`tab{self.filters.doc_type}`.modified DESC
+		""", as_dict=True)
+
 		self.get_groups()
 
 	def get_sales_transactions_based_on_item_group(self):
