@@ -643,7 +643,7 @@ class ReceivablePayableReport(object):
 		row.remaining_balance = row.outstanding
 		row.future_amount = 0.0
 		for future in self.future_payments.get((row.voucher_no, row.party), []):
-			if row.remaining_balance > 0 and future.future_amount:
+			if row.remaining_balance != 0 and future.future_amount:
 				if future.future_amount > row.outstanding:
 					row.future_amount = row.outstanding
 					future.future_amount = future.future_amount - row.outstanding
