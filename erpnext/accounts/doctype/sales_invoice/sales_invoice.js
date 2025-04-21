@@ -108,7 +108,7 @@ erpnext.accounts.SalesInvoiceController = class SalesInvoiceController extends e
 				return item.is_delivered_by_supplier ? true : false;
 			})
 
-			if(doc.outstanding_amount >= 0 || Math.abs(flt(doc.outstanding_amount)) < flt(doc.grand_total)) {
+			if(doc.update_stock && doc.outstanding_amount >= 0 || Math.abs(flt(doc.outstanding_amount)) < flt(doc.grand_total)) {
 				cur_frm.add_custom_button(__('Return / Credit Note'),
 					this.make_sales_return, __('Create'));
 				cur_frm.page.set_inner_btn_group_as_primary(__('Create'));
