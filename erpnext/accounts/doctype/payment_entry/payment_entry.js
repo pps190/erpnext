@@ -747,6 +747,11 @@ frappe.ui.form.on('Payment Entry', {
 			},
 			callback: function(r, rt) {
 				if(r.message) {
+					if (r.message.length > 0 && r.message[0].discount_amount) {
+						var d = frm.add_child("deductions");
+						d.amount = r.message[0].discount_amount;
+					}
+
 					var total_positive_outstanding = 0;
 					var total_negative_outstanding = 0;
 
@@ -801,7 +806,10 @@ frappe.ui.form.on('Payment Entry', {
 				}
 
 				frm.events.allocate_party_amount_against_ref_docs(frm,
-					(frm.doc.payment_type=="Receive" ? frm.doc.paid_amount : frm.doc.received_amount));
+					(frm.doc.payment_type=="Receive" ? frm.doc.paid_amount : frm.doc.received_amount),
+					undefined,
+					Boolean(r.message[0].discount_amount)
+					);
 
 			}
 		});
@@ -815,13 +823,16 @@ frappe.ui.form.on('Payment Entry', {
 		return ["Sales Invoice", "Purchase Invoice"];
 	},
 
-	allocate_party_amount_against_ref_docs: function(frm, paid_amount, paid_amount_change) {
+	allocate_party_amount_against_ref_docs: function(frm, paid_amount, paid_amount_change, from_discount = false) {
 		var total_positive_outstanding_including_order = 0;
 		var total_negative_outstanding = 0;
 		var total_deductions = frappe.utils.sum($.map(frm.doc.deductions || [],
 			function(d) { return flt(d.amount) }));
 
-		paid_amount -= total_deductions;
+		if (!from_discount)
+			paid_amount -= total_deductions;
+		else
+			paid_amount += total_deductions;
 
 		$.each(frm.doc.references || [], function(i, row) {
 			if(flt(row.outstanding_amount) > 0)

@@ -1,7 +1,7 @@
 # Copyright (c) 2015, Frappe Technologies Pvt. Ltd. and contributors
 # For license information, please see license.txt
-
-
+from collections import defaultdict
+from datetime import date
 import json
 from functools import reduce
 
@@ -1534,6 +1534,42 @@ def get_outstanding_reference_documents(args):
 		)
 
 	data = negative_outstanding_invoices + outstanding_invoices + orders_to_be_billed
+
+	total_amount_by_discount: dict[float, float] = defaultdict(float)
+	total_credit: float = 0.0
+	total_discount_amount: float = 0.0
+	for d in data:
+		if d["voucher_type"] != "Sales Invoice":
+			continue
+
+		si = frappe.get_doc("Sales Invoice", d["voucher_no"])
+		discount_details = apply_early_payment_discount(
+			0.0,
+			0.0,
+			si,
+			si.currency,
+			date.fromisoformat(args["posting_date"])
+		)
+		if discount_details[3]:
+			total_amount_by_discount[discount_details[-1][0]["discount"]] += si.outstanding_amount
+		elif si.is_return:
+			total_credit = total_credit + si.outstanding_amount
+	frappe.clear_messages()
+
+	for discount_percent, amount in total_amount_by_discount.items():
+		discount_percent = discount_percent / 100
+		if amount > total_credit:
+			amount = amount - total_credit
+			total_credit = 0
+		else:
+			total_credit = total_credit - amount
+			amount = 0
+
+		if amount > 0:
+			total_discount_amount = total_discount_amount + amount * discount_percent
+
+	if data and total_discount_amount:
+		data[0]["discount_amount"] = total_discount_amount
 
 	if not data:
 		if args.get("get_outstanding_invoices") and args.get("get_orders_to_be_billed"):

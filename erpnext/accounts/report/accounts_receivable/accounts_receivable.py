@@ -664,18 +664,19 @@ class ReceivablePayableReport(object):
 			row.future_ref = ", ".join(row.future_ref)
 
 	def get_return_entries(self):
-		doctype = "Sales Invoice" if self.account_type == "Receivable" else "Purchase Invoice"
-		filters = {"is_return": 1, "docstatus": 1, "company": self.filters.company}
-		or_filters = {}
-		for party_type in self.party_type:
-			party_field = scrub(party_type)
-			if self.filters.get(party_field):
-				or_filters.update({party_field: self.filters.get(party_field)})
-		self.return_entries = frappe._dict(
-			frappe.get_all(
-				doctype, filters=filters, or_filters=or_filters, fields=["name", "return_against"], as_list=1
-			)
-		)
+		self.return_entries = []
+		# doctype = "Sales Invoice" if self.account_type == "Receivable" else "Purchase Invoice"
+		# filters = {"is_return": 1, "docstatus": 1, "company": self.filters.company}
+		# or_filters = {}
+		# for party_type in self.party_type:
+		# 	party_field = scrub(party_type)
+		# 	if self.filters.get(party_field):
+		# 		or_filters.update({party_field: self.filters.get(party_field)})
+		# self.return_entries = frappe._dict(
+		# 	frappe.get_all(
+		# 		doctype, filters=filters, or_filters=or_filters, fields=["name", "return_against"], as_list=1
+		# 	)
+		# )
 
 	def set_ageing(self, row):
 		if self.filters.ageing_based_on == "Due Date":

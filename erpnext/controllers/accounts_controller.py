@@ -2706,10 +2706,10 @@ def get_payment_term_details(
 
 	if bill_date:
 		term_details.due_date = get_due_date(term, bill_date)
-		term_details.discount_date = get_discount_date(term, bill_date)
+		term_details.discount_date = get_discount_date(term, bill_date, due_date=term_details.due_date)
 	elif posting_date:
 		term_details.due_date = get_due_date(term, posting_date)
-		term_details.discount_date = get_discount_date(term, posting_date)
+		term_details.discount_date = get_discount_date(term, posting_date, due_date=term_details.due_date)
 
 	if getdate(term_details.due_date) < getdate(posting_date):
 		term_details.due_date = posting_date
@@ -2729,7 +2729,7 @@ def get_due_date(term, posting_date=None, bill_date=None):
 	return due_date
 
 
-def get_discount_date(term, posting_date=None, bill_date=None):
+def get_discount_date(term, posting_date=None, bill_date=None, due_date=None):
 	discount_validity = None
 	date = bill_date or posting_date
 	if term.discount_validity_based_on == "Day(s) after invoice date":
@@ -2738,6 +2738,8 @@ def get_discount_date(term, posting_date=None, bill_date=None):
 		discount_validity = add_days(get_last_day(date), term.discount_validity)
 	elif term.discount_validity_based_on == "Month(s) after the end of the invoice month":
 		discount_validity = get_last_day(add_months(date, term.discount_validity))
+	elif term.discount_validity_based_on == "Day(s) before due date.":
+		discount_validity = add_days(due_date, -term.discount_validity)
 	return discount_validity
 
 
