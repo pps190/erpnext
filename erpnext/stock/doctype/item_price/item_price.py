@@ -24,7 +24,7 @@ class ItemPrice(Document):
 		self.validate_item_template()
 
 	def validate_item(self):
-		if not frappe.db.exists("Item", self.item_code):
+		if not self.flags.ignore_links and not frappe.db.exists("Item", self.item_code):
 			frappe.throw(_("Item {0} not found.").format(self.item_code))
 
 	def validate_dates(self):
@@ -45,10 +45,14 @@ class ItemPrice(Document):
 			self.buying, self.selling, self.currency = price_list_details
 
 	def update_item_details(self):
-		if self.item_code:
-			self.item_name, self.item_description = frappe.db.get_value(
-				"Item", self.item_code, ["item_name", "description"]
-			)
+		if not self.item_code:
+			return
+
+		item_details = frappe.db.get_value("Item", self.item_code, ["item_name", "description"])
+		if not item_details:
+			return
+
+		self.item_name, self.item_description = item_details
 
 	def validate_item_template(self):
 		if frappe.get_cached_value("Item", self.item_code, "has_variants"):
