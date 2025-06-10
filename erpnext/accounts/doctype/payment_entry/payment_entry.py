@@ -1549,7 +1549,7 @@ def get_outstanding_reference_documents(args):
 			si,
 			si.currency,
 			date.fromisoformat(args["posting_date"])
-		)
+		) if (frappe.get_value("Customer", si.customer, "payment_terms") or "") == "MONTHLY 2%" else [None, None, None, None]
 		if discount_details[3]:
 			total_amount_by_discount[discount_details[-1][0]["discount"]] += si.outstanding_amount
 		elif si.is_return:
