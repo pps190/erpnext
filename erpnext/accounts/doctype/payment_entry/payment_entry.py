@@ -1543,30 +1543,52 @@ def get_outstanding_reference_documents(args):
 			continue
 
 		si = frappe.get_doc("Sales Invoice", d["voucher_no"])
-		discount_details = apply_early_payment_discount(
-			0.0,
-			0.0,
-			si,
-			si.currency,
-			date.fromisoformat(args["posting_date"])
-		) if (frappe.get_value("Customer", si.customer, "payment_terms") or "") == "MONTHLY 2%" else [None, None, None, None]
-		if discount_details[3]:
-			total_amount_by_discount[discount_details[-1][0]["discount"]] += si.outstanding_amount
-		elif si.is_return:
-			total_credit = total_credit + si.outstanding_amount
+		if not si.is_return:
+			party_type = set_party_type(si.doctype)
+
+			party_account = set_party_account(si.doctype, si.name, si, party_type)
+			party_account_currency = set_party_account_currency(si.doctype, party_account, si)
+			payment_type = set_payment_type(si.doctype, si)
+
+			grand_total, outstanding_amount = set_grand_total_and_outstanding_amount(
+				None, si.doctype, party_account_currency, si
+			)
+
+			# bank or cash
+			bank = get_bank_cash_account(si, None)
+
+			# if default bank or cash account is not set in company master and party has default company bank account, fetch it
+			if party_type in ["Customer", "Supplier"] and not bank:
+				party_bank_account = get_party_bank_account(party_type, si.get(scrub(party_type)))
+				if party_bank_account:
+					account = frappe.db.get_value("Bank Account", party_bank_account, "account")
+					bank = get_bank_cash_account(si, account)
+
+			paid_amount, received_amount = set_paid_amount_and_received_amount(
+				si.doctype, party_account_currency, bank, outstanding_amount, payment_type, None, si
+			)
+
+			discount_details = apply_early_payment_discount(
+				paid_amount,
+				received_amount,
+				si,
+				si.currency,
+				date.fromisoformat(args["posting_date"])
+			) if (frappe.get_value("Customer", si.customer, "payment_terms") or "") == "MONTHLY 2%" else [None, None, None, None]
+			if discount_details[3]:
+				total_amount_by_discount[discount_details[-1][0]["discount"]] += si.outstanding_amount
+
+		if d["outstanding_amount"] < 0.0:
+			total_credit = total_credit + abs(d["outstanding_amount"])
+
 	frappe.clear_messages()
 
 	for discount_percent, amount in total_amount_by_discount.items():
 		discount_percent = discount_percent / 100
-		if amount > total_credit:
-			amount = amount - total_credit
-			total_credit = 0
-		else:
-			total_credit = total_credit - amount
-			amount = 0
-
-		if amount > 0:
-			total_discount_amount = total_discount_amount + amount * discount_percent
+		grand_total = amount - total_credit
+		total = grand_total / 1.13
+		discount_amount = total * discount_percent
+		total_discount_amount = grand_total - (grand_total - discount_amount)
 
 	if data and total_discount_amount:
 		data[0]["discount_amount"] = total_discount_amount
@@ -2275,8 +2297,9 @@ def apply_early_payment_discount(
 			if not term.discounted_amount and term.discount and reference_date <= term.discount_date:
 
 				if term.discount_type == "Percentage":
+					total = doc.get("total") if is_multi_currency else doc.get("base_total")
 					grand_total = doc.get("grand_total") if is_multi_currency else doc.get("base_grand_total")
-					discount_amount = flt(grand_total) * (term.discount / 100)
+					discount_amount = flt(grand_total) - (total * (term.discount / 100))
 				else:
 					discount_amount = term.discount
 
