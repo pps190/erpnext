@@ -574,7 +574,7 @@ class PaymentReconciliation(Document):
 			if row.invoice_type and row.invoice_number and row.allocated_amount:
 				invoices_to_reconcile.append(row.invoice_number)
 
-				if flt(row.amount) - flt(row.allocated_amount) < 0:
+				if flt(row.amount, 2) - flt(row.allocated_amount, 2) < 0:
 					frappe.throw(
 						_(
 							"Row {0}: Allocated amount {1} must be less than or equal to remaining payment amount {2}"

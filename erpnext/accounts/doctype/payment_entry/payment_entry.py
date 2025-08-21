@@ -169,11 +169,11 @@ class PaymentEntry(AccountsController):
 		else:
 			fail_message = _("Row #{0}: Allocated Amount cannot be greater than outstanding amount.")
 			for d in self.get("references"):
-				if (flt(d.allocated_amount)) > 0 and flt(d.allocated_amount) > flt(d.outstanding_amount):
+				if (flt(d.allocated_amount), 2) > 0 and flt(d.allocated_amount, 2) > flt(d.outstanding_amount, 2):
 					frappe.throw(fail_message.format(d.idx))
 
 				# Check for negative outstanding invoices as well
-				if flt(d.allocated_amount) < 0 and flt(d.allocated_amount) < flt(d.outstanding_amount):
+				if flt(d.allocated_amount, 2) < 0 and flt(d.allocated_amount, 2) < flt(d.outstanding_amount, 2):
 					frappe.throw(fail_message.format(d.idx))
 
 	def term_based_allocation_enabled_for_reference(
