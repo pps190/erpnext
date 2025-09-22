@@ -110,6 +110,11 @@ erpnext.accounts.PurchaseInvoice = class PurchaseInvoice extends erpnext.buying.
 		}
 
 		if(!doc.is_return && doc.docstatus==1) {
+			if(doc.outstanding_amount >= 0 || Math.abs(flt(doc.outstanding_amount)) < flt(doc.grand_total)) {
+				cur_frm.add_custom_button(__('Return / Debit Note'),
+					this.make_debit_note, __('Create'));
+			}
+
 			if(!doc.auto_repeat) {
 				cur_frm.add_custom_button(__('Subscription'), function() {
 					erpnext.utils.make_subscription(doc.doctype, doc.name)
@@ -524,6 +529,7 @@ cur_frm.fields_dict['items'].grid.get_field('project').get_query = function(doc,
 frappe.ui.form.on("Purchase Invoice", {
 	setup: function(frm) {
 		frm.custom_make_buttons = {
+			'Purchase Invoice': 'Return / Debit Note',
 			'Payment Entry': 'Payment'
 		}
 
