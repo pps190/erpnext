@@ -873,7 +873,7 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 					if (message1.length !== 0) message2 = " and " + message2;
 					final_message = final_message + message2;
 				}
-				frappe.msgprint(final_message);
+				this.frm.clear_table("payment_schedule");
 			}
 		}
 	}
