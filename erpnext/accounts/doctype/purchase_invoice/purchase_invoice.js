@@ -45,6 +45,11 @@ erpnext.accounts.PurchaseInvoice = class PurchaseInvoice extends erpnext.buying.
 		if (this.frm.doc.supplier && this.frm.doc.__islocal) {
 			this.frm.trigger('supplier');
 		}
+
+		if (this.frm.is_new() && !this.frm.doc.discount_amount && !this.frm.doc.additional_discount_percentage) {
+			this.frm.set_value("apply_discount_on", "Net Total");
+			// devin: make apply additional discount ready for operator on new forms.
+		}
 	}
 
 	refresh(doc) {

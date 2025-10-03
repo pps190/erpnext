@@ -821,11 +821,11 @@
    "label": "Additional Discount"
   },
   {
-   "default": "Grand Total",
+   "default": "Net Total",
    "fieldname": "apply_discount_on",
    "fieldtype": "Select",
    "label": "Apply Additional Discount On",
-   "options": "\nGrand Total\nNet Total",
+   "options": "\nNet Total\nGrand Total",
    "print_hide": 1
   },
   {
@@ -1594,7 +1594,7 @@
  "idx": 204,
  "is_submittable": 1,
  "links": [],
- "modified": "2025-10-02 15:47:30.319200",
+ "modified": "2025-10-03 14:43:30.319200",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Purchase Invoice",
