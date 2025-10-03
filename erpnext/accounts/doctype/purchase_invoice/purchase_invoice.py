@@ -546,6 +546,8 @@ class PurchaseInvoice(BuyingController):
 
 		self.process_common_party_accounting()
 
+		self.load_from_db()
+
 	def on_update_after_submit(self):
 		if hasattr(self, "repost_required"):
 			fields_to_check = [

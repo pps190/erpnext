@@ -47,6 +47,10 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 			cur_frm.cscript.calculate_taxes_and_totals();
 		});
 
+		frappe.ui.form.on(this.frm.doctype + " Item", "core_rate", function(frm, cdt, cdn) {
+			cur_frm.cscript.calculate_taxes_and_totals();
+		});
+
 		frappe.ui.form.on(this.frm.cscript.tax_table, "tax_amount", function(frm, cdt, cdn) {
 			cur_frm.cscript.calculate_taxes_and_totals();
 		});

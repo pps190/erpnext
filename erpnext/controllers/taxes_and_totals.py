@@ -20,6 +20,26 @@ from erpnext.controllers.accounts_controller import (
 from erpnext.stock.get_item_details import _get_item_tax_template
 from erpnext.utilities.regional import temporary_flag
 
+def validate_core_fields(item: Document):
+	float_attrs = (
+		"core_rate",
+		"base_core_rate",
+		"net_core_rate",
+		"base_net_core_rate",
+		"core_amount",
+		"base_core_amount",
+		"net_core_amount",
+		"base_net_core_amount",
+	)
+
+	for float_attr in float_attrs:
+		if not hasattr(item, float_attr):
+			setattr(item, float_attr, 0.0)
+		try:
+			item.precision(float_attr)
+		except AttributeError:
+			setattr(item._precision.main, float_attr, 2)
+
 
 class calculate_taxes_and_totals(object):
 	def __init__(self, doc: Document):
@@ -148,6 +168,8 @@ class calculate_taxes_and_totals(object):
 
 		if not self.discount_amount_applied:
 			for item in self._items:
+				validate_core_fields(item)
+
 				self.doc.round_floats_in(item)
 
 				if item.discount_percentage == 100:
@@ -201,9 +223,13 @@ class calculate_taxes_and_totals(object):
 					item.amount = flt(item.rate * item.qty, item.precision("amount"))
 
 				item.net_amount = item.amount
+				item.net_core_amount = item.core_amount
 
 				self._set_in_company_currency(
-					item, ["price_list_rate", "rate", "net_rate", "amount", "net_amount"]
+					item, [
+						"price_list_rate", "rate", "net_rate", "amount", "net_amount",
+						"core_rate", "core_amount", "net_core_rate", "net_core_amount",
+					]
 				)
 
 				item.item_tax_amount = 0.0
@@ -330,11 +356,12 @@ class calculate_taxes_and_totals(object):
 		) = self.doc.base_total = self.doc.net_total = self.doc.base_net_total = 0.0
 
 		for item in self._items:
-			self.doc.total += item.amount
+			validate_core_fields(item)
+			self.doc.total += item.amount + (item.core_amount if self.doc.docstatus == 0 or self.doc.doctype in ("Sales Order", "Purchase Order") else 0.0)
 			self.doc.total_qty += item.qty
-			self.doc.base_total += item.base_amount
-			self.doc.net_total += item.net_amount
-			self.doc.base_net_total += item.base_net_amount
+			self.doc.base_total += item.base_amount + (item.base_core_amount if self.doc.docstatus == 0 or self.doc.doctype in ("Sales Order", "Purchase Order") else 0.0)
+			self.doc.net_total += item.net_amount + (item.net_core_amount if self.doc.docstatus == 0 or self.doc.doctype in ("Sales Order", "Purchase Order") else 0.0)
+			self.doc.base_net_total += item.base_net_amount + (item.base_net_core_amount if self.doc.docstatus == 0 or self.doc.doctype in ("Sales Order", "Purchase Order") else 0.0)
 
 		self.doc.round_floats_in(self.doc, ["total", "base_total", "net_total", "base_net_total"])
 
@@ -396,7 +423,7 @@ class calculate_taxes_and_totals(object):
 				# note: grand_total_for_current_item contains the contribution of
 				# item's amount, previously applied tax and the current tax on that item
 				if i == 0:
-					tax.grand_total_for_current_item = flt(item.net_amount + current_tax_amount)
+					tax.grand_total_for_current_item = flt(item.net_amount + (item.net_core_amount if self.doc.docstatus == 0 or self.doc.doctype in ("Sales Order", "Purchase Order") else 0.0) + current_tax_amount)
 				else:
 					tax.grand_total_for_current_item = flt(
 						self.doc.get("taxes")[i - 1].grand_total_for_current_item + current_tax_amount
@@ -449,6 +476,7 @@ class calculate_taxes_and_totals(object):
 			tax.total = flt(self.doc.get("taxes")[row_idx - 1].total + tax_amount, tax.precision("total"))
 
 	def get_current_tax_amount(self, item, tax, item_tax_map):
+		validate_core_fields(item)
 		tax_rate = self._get_tax_rate(tax, item_tax_map)
 		current_tax_amount = 0.0
 
@@ -456,11 +484,11 @@ class calculate_taxes_and_totals(object):
 			# distribute the tax amount proportionally to each item row
 			actual = flt(tax.tax_amount, tax.precision("tax_amount"))
 			current_tax_amount = (
-				item.net_amount * actual / self.doc.net_total if self.doc.net_total else 0.0
+				(item.net_amount + (item.net_core_amount if self.doc.docstatus == 0 or self.doc.doctype in ("Sales Order", "Purchase Order") else 0.0)) * actual / self.doc.net_total if self.doc.net_total else 0.0
 			)
 
 		elif tax.charge_type == "On Net Total":
-			current_tax_amount = (tax_rate / 100.0) * item.net_amount
+			current_tax_amount = (tax_rate / 100.0) * (item.net_amount + (item.net_core_amount if self.doc.docstatus == 0 or self.doc.doctype in ("Sales Order", "Purchase Order") else 0.0))
 		elif tax.charge_type == "On Previous Row Amount":
 			current_tax_amount = (tax_rate / 100.0) * self.doc.get("taxes")[
 				cint(tax.row_id) - 1
@@ -643,12 +671,17 @@ class calculate_taxes_and_totals(object):
 			if total_for_discount_amount:
 				# calculate item amount after Discount Amount
 				for i, item in enumerate(self._items):
-					distributed_amount = (
+					distributed_net_amount = (
 						flt(self.doc.discount_amount) * item.net_amount / total_for_discount_amount
 					)
+					distributed_net_core_amount = (
+							flt(self.doc.discount_amount) * item.net_core_amount / total_for_discount_amount
+					)
 
-					item.net_amount = flt(item.net_amount - distributed_amount, item.precision("net_amount"))
+					item.net_amount = flt(item.net_amount - distributed_net_amount, item.precision("net_amount"))
+					item.net_core_amount = flt(item.net_core_amount - distributed_net_amount, item.precision("net_core_amount"))
 					net_total += item.net_amount
+					net_total += item.net_core_amount if self.doc.docstatus == 0 or self.doc.doctype in ("Sales Order", "Purchase Order") else 0.0
 
 					# discount amount rounding loss adjustment if no taxes
 					if (
@@ -663,8 +696,9 @@ class calculate_taxes_and_totals(object):
 						item.net_amount = flt(item.net_amount + discount_amount_loss, item.precision("net_amount"))
 
 					item.net_rate = flt(item.net_amount / item.qty, item.precision("net_rate")) if item.qty else 0
+					item.net_core_rate = flt(item.net_amount / item.qty, item.precision("net_core_rate")) if item.qty else 0
 
-					self._set_in_company_currency(item, ["net_rate", "net_amount"])
+					self._set_in_company_currency(item, ["net_rate", "net_amount", "net_core_rate", "net_core_amount"])
 
 				self.discount_amount_applied = True
 				self._calculate()
