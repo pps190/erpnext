@@ -142,6 +142,13 @@ def get_item_details(args, doc=None, for_validate=False, overwrite_warehouse=Tru
 		out.amount = flt(args.qty) * flt(out.rate)
 
 	out = remove_standard_fields(out)
+
+	if item.core_list or item.core_replacement:
+		if args.doctype in ("Purchase Order", "Purchase Invoice", "Purchase Receipt"):
+			out.core_rate = item.core_replacement
+		elif args.doctype in ("Sales Order", "Sales Invoice", "Delivery Note"):
+			out.core_rate = item.core_list
+
 	return out
 
 
