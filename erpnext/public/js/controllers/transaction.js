@@ -959,7 +959,12 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 			if(this.frm.doc.__onload?.load_after_mapping) {
 				this.calculate_taxes_and_totals();
 			} else if (!this.in_apply_price_list){
-				this.apply_price_list();
+				// If currencies are the same, just recalculate taxes instead of fetching prices
+				if(this.frm.doc.currency === this.frm.doc.price_list_currency) {
+					this.calculate_taxes_and_totals();
+				} else {
+					this.apply_price_list();
+				}
 			}
 
 		}
@@ -1059,13 +1064,21 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 		if(this.frm.doc.price_list_currency === this.get_company_currency()) {
 			this.frm.set_value("plc_conversion_rate", 1.0);
 		} else if(this.frm.doc.price_list_currency === this.frm.doc.currency
-			&& this.frm.doc.plc_conversion_rate && cint(this.frm.doc.plc_conversion_rate) != 1 &&
-			cint(this.frm.doc.plc_conversion_rate) != cint(this.frm.doc.conversion_rate)) {
-			this.frm.set_value("conversion_rate", this.frm.doc.plc_conversion_rate);
+			&& this.frm.doc.plc_conversion_rate && cint(this.frm.doc.plc_conversion_rate) != 1) {
+			// Check if the rates are significantly different (more than 0.5% difference)
+			const rate_difference = Math.abs(flt(this.frm.doc.plc_conversion_rate) - flt(this.frm.doc.conversion_rate));
+			const tolerance = flt(this.frm.doc.conversion_rate) * 0.005; // 0.5% tolerance
+
+			if(rate_difference > tolerance) {
+				this.frm.set_value("conversion_rate", this.frm.doc.plc_conversion_rate);
+			}
 		}
 
 		if(!this.in_apply_price_list) {
-			this.apply_price_list(null, true);
+			// Only call apply_price_list if currencies are different
+			if(this.frm.doc.currency !== this.frm.doc.price_list_currency) {
+				this.apply_price_list(null, true);
+			}
 		}
 	}
 
@@ -1623,7 +1636,8 @@ erpnext.TransactionController = class TransactionController extends erpnext.taxe
 	apply_price_list(item, reset_plc_conversion) {
 		// We need to reset plc_conversion_rate sometimes because the call to
 		// `erpnext.stock.get_item_details.apply_price_list` is sensitive to its value
-		if (!reset_plc_conversion) {
+		// BUT: Don't reset if currencies are the same to avoid cascading updates
+		if (!reset_plc_conversion && this.frm.doc.currency !== this.frm.doc.price_list_currency) {
 			this.frm.set_value("plc_conversion_rate", "");
 		}
 
