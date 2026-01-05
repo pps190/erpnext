@@ -18,7 +18,7 @@
             <table>
                 <tr><td><strong>Voucher No: </strong></td><td>{{ doc.name }}</td></tr>
                 <tr><td><strong>Date: </strong></td><td>{{ frappe.utils.format_date(doc.creation) }}</td></tr>
-                <tr><td><strong>Ref: </strong></td><td>{{ frappe.call('next.overrides.sales_invoice.get_gl_transaction_nos', voucher_type='Purchase Invoice', voucher_no=doc.name) or '' }}</td></tr>
+                <tr><td><strong>Ref: </strong></td><td>{{ get_gl_transaction_nos('Purchase Invoice', doc.name) or '' }}</td></tr>
             </table>
         </div>
     </div>
