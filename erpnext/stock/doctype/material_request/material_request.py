@@ -775,6 +775,7 @@ def create_pick_list(source_name, target_doc=None):
 
 	items = doc.locations
 	doc.locations = []
+	count = 0
 	for loc in batch(items, 20):
 		new_doc = frappe.copy_doc(doc)
 		new_doc.locations = loc
@@ -783,6 +784,8 @@ def create_pick_list(source_name, target_doc=None):
 		new_doc.parent_warehouse = frappe.db.get_value("Material Request", source_name, "set_from_warehouse")
 		new_doc.set_item_locations()
 		new_doc.save()
+		count = count + 1
+	frappe.msgprint("{0} Pick List(s) Created".format(count))
 
 
 def batch(iterable, n=1):
