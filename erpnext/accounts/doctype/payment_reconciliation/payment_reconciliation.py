@@ -13,6 +13,9 @@ import erpnext
 from erpnext.accounts.doctype.process_payment_reconciliation.process_payment_reconciliation import (
 	is_any_doc_running,
 )
+from erpnext.accounts.doctype.payment_entry.payment_entry import (
+	split_invoices_based_on_payment_terms,
+)
 from erpnext.accounts.utils import (
 	QueryPaymentLedger,
 	create_gain_loss_journal,
@@ -41,6 +44,8 @@ class PaymentReconciliation(Document):
 				"default_advance_account": None,
 				"from_invoice_date": None,
 				"to_invoice_date": None,
+				"from_due_date": None,
+				"to_due_date": None,
 				"invoice_limit": 50,
 				"from_payment_date": None,
 				"to_payment_date": None,
@@ -294,6 +299,22 @@ class PaymentReconciliation(Document):
 		# Happens when non-standalone cr/dr notes are linked with another invoice through journal entry
 		non_reconciled_invoices = [x for x in non_reconciled_invoices if x.voucher_no not in cr_dr_notes]
 
+		non_reconciled_invoices = split_invoices_based_on_payment_terms(
+			non_reconciled_invoices, self.company
+		)
+
+		# Apply due_date filter post-split so per-term due_dates are used correctly
+		if self.from_due_date or self.to_due_date:
+			filtered = []
+			for inv in non_reconciled_invoices:
+				d = inv.get("due_date")
+				if self.from_due_date and d and d < getdate(self.from_due_date):
+					continue
+				if self.to_due_date and d and d > getdate(self.to_due_date):
+					continue
+				filtered.append(inv)
+			non_reconciled_invoices = filtered
+
 		if self.invoice_limit:
 			non_reconciled_invoices = non_reconciled_invoices[: self.invoice_limit]
 
@@ -308,6 +329,8 @@ class PaymentReconciliation(Document):
 			inv.invoice_type = entry.get("voucher_type")
 			inv.invoice_number = entry.get("voucher_no")
 			inv.invoice_date = entry.get("posting_date")
+			inv.due_date = entry.get("due_date")
+			inv.payment_term = entry.get("payment_term")
 			inv.amount = flt(entry.get("invoice_amount"))
 			inv.currency = entry.get("currency")
 			inv.outstanding_amount = flt(entry.get("outstanding_amount"))

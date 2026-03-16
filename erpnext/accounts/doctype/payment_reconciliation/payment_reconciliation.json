@@ -13,11 +13,13 @@
   "col_break1",
   "from_invoice_date",
   "from_payment_date",
+  "from_due_date",
   "minimum_invoice_amount",
   "minimum_payment_amount",
   "column_break_11",
   "to_invoice_date",
   "to_payment_date",
+  "to_due_date",
   "maximum_invoice_amount",
   "maximum_payment_amount",
   "column_break_13",
@@ -189,6 +191,16 @@
    "fieldtype": "Link",
    "label": "Cost Center",
    "options": "Cost Center"
+  },
+  {
+   "fieldname": "from_due_date",
+   "fieldtype": "Date",
+   "label": "From Due Date"
+  },
+  {
+   "fieldname": "to_due_date",
+   "fieldtype": "Date",
+   "label": "To Due Date"
   },
   {
    "fieldname": "invoice_name",
