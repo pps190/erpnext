@@ -184,6 +184,12 @@ class PaymentEntry(AccountsController):
 			and reference_doctype in ["Sales Invoice", "Sales Order", "Purchase Order", "Purchase Invoice"]
 			and reference_name
 		):
+			# Check invoice-level flag first (set by handling fee split or manually)
+			if frappe.db.get_value(
+				reference_doctype, reference_name, "allocate_payment_based_on_payment_terms"
+			):
+				return True
+			# Fall back to template-level flag
 			if template := frappe.db.get_value(reference_doctype, reference_name, "payment_terms_template"):
 				return frappe.db.get_value(
 					"Payment Terms Template", template, "allocate_payment_based_on_payment_terms"
@@ -353,6 +359,13 @@ class PaymentEntry(AccountsController):
 						# exchange_gain_loss is calculated from invoice & populated
 						# and row.exchange_rate is already set to payment entry's exchange rate
 						# refer -> `update_reference_in_payment_entry()` in utils.py
+						continue
+
+					# When a payment_term is set, the row represents a specific
+					# Payment Schedule entry — preserve per-term due_date,
+					# total_amount and outstanding_amount instead of overwriting
+					# with invoice-header values (which are full-invoice amounts).
+					if d.payment_term and field in ("due_date", "total_amount", "outstanding_amount"):
 						continue
 
 					if field == "exchange_rate" or not d.get(field) or force:
@@ -1561,10 +1574,18 @@ def split_invoices_based_on_payment_terms(outstanding_invoices, company) -> list
 	outstanding_invoices_after_split = []
 	for entry in outstanding_invoices:
 		if entry.voucher_type in ["Sales Invoice", "Purchase Invoice"]:
-			if payment_term_template := frappe.db.get_value(
+			# Check invoice-level allocate flag first, then fall back to template
+			invoice_allocate = frappe.db.get_value(
+				entry.voucher_type, entry.voucher_no, "allocate_payment_based_on_payment_terms"
+			)
+			payment_term_template = frappe.db.get_value(
 				entry.voucher_type, entry.voucher_no, "payment_terms_template"
-			):
-				split_rows = get_split_invoice_rows(entry, payment_term_template, exc_rates)
+			)
+
+			if invoice_allocate or payment_term_template:
+				split_rows = get_split_invoice_rows(
+					entry, payment_term_template, exc_rates, invoice_allocate
+				)
 				if not split_rows:
 					continue
 
@@ -1578,7 +1599,7 @@ def split_invoices_based_on_payment_terms(outstanding_invoices, company) -> list
 				outstanding_invoices_after_split += split_rows
 				continue
 
-		# If not an invoice or no payment terms template, add as it is
+		# If not an invoice or no split needed, add as it is
 		outstanding_invoices_after_split.append(entry)
 
 	return outstanding_invoices_after_split
@@ -1608,12 +1629,21 @@ def get_currency_data(outstanding_invoices: list, company: str = None) -> dict:
 	return exc_rates
 
 
-def get_split_invoice_rows(invoice: dict, payment_term_template: str, exc_rates: dict) -> list:
+def get_split_invoice_rows(
+	invoice: dict, payment_term_template: str, exc_rates: dict, invoice_allocate: bool = False
+) -> list:
 	"""Split invoice based on its payment schedule table."""
 	split_rows = []
-	allocate_payment_based_on_payment_terms = frappe.db.get_value(
-		"Payment Terms Template", payment_term_template, "allocate_payment_based_on_payment_terms"
-	)
+
+	# Invoice-level flag takes priority over template-level flag
+	if invoice_allocate:
+		allocate_payment_based_on_payment_terms = True
+	elif payment_term_template:
+		allocate_payment_based_on_payment_terms = frappe.db.get_value(
+			"Payment Terms Template", payment_term_template, "allocate_payment_based_on_payment_terms"
+		)
+	else:
+		allocate_payment_based_on_payment_terms = False
 
 	if not allocate_payment_based_on_payment_terms:
 		return [invoice]
@@ -1633,15 +1663,20 @@ def get_split_invoice_rows(invoice: dict, payment_term_template: str, exc_rates:
 		if not is_multi_currency_acc:
 			payment_term_outstanding = doc_details.conversion_rate * flt(payment_term.outstanding)
 
+		# Per-term payment amount (same currency conversion as outstanding)
+		payment_term_amount = flt(payment_term.payment_amount)
+		if not is_multi_currency_acc:
+			payment_term_amount = doc_details.conversion_rate * payment_term_amount
+
 		split_rows.append(
 			frappe._dict(
 				{
-					"due_date": invoice.due_date,
+					"due_date": payment_term.due_date,
 					"currency": invoice.currency,
 					"voucher_no": invoice.voucher_no,
 					"voucher_type": invoice.voucher_type,
 					"posting_date": invoice.posting_date,
-					"invoice_amount": flt(invoice.invoice_amount),
+					"invoice_amount": payment_term_amount,
 					"outstanding_amount": payment_term_outstanding
 					if payment_term_outstanding
 					else invoice.outstanding_amount,
@@ -2037,10 +2072,13 @@ def get_payment_entry(
 			"Purchase Invoice",
 			"Purchase Order",
 			"Sales Order",
-		) and frappe.get_cached_value(
-			"Payment Terms Template",
-			{"name": doc.payment_terms_template},
-			"allocate_payment_based_on_payment_terms",
+		) and (
+			getattr(doc, "allocate_payment_based_on_payment_terms", 0)
+			or frappe.get_cached_value(
+				"Payment Terms Template",
+				{"name": doc.payment_terms_template},
+				"allocate_payment_based_on_payment_terms",
+			)
 		):
 
 			for reference in get_reference_as_per_payment_terms(
@@ -2401,15 +2439,22 @@ def get_reference_as_per_payment_terms(
 				payment_term_outstanding * doc.get("conversion_rate"), payment_term.precision("payment_amount")
 			)
 
+		# Per-term total amount (same currency conversion as outstanding)
+		payment_term_amount = flt(payment_term.payment_amount)
+		if not is_multi_currency_acc:
+			payment_term_amount = flt(
+				payment_term_amount * doc.get("conversion_rate"), payment_term.precision("payment_amount")
+			)
+
 		if payment_term_outstanding:
 			references.append(
 				{
 					"reference_doctype": dt,
 					"reference_name": dn,
 					"bill_no": doc.get("bill_no"),
-					"due_date": doc.get("due_date"),
-					"total_amount": grand_total,
-					"outstanding_amount": outstanding_amount,
+					"due_date": payment_term.due_date,
+					"total_amount": payment_term_amount,
+					"outstanding_amount": payment_term_outstanding,
 					"payment_term_outstanding": payment_term_outstanding,
 					"payment_term": payment_term.payment_term,
 					"allocated_amount": payment_term_outstanding,
