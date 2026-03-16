@@ -13,6 +13,9 @@ import erpnext
 from erpnext.accounts.doctype.process_payment_reconciliation.process_payment_reconciliation import (
 	is_any_doc_running,
 )
+from erpnext.accounts.doctype.payment_entry.payment_entry import (
+	split_invoices_based_on_payment_terms,
+)
 from erpnext.accounts.utils import (
 	QueryPaymentLedger,
 	create_gain_loss_journal,
@@ -293,6 +296,10 @@ class PaymentReconciliation(Document):
 		# Filter out cr/dr notes from outstanding invoices list
 		# Happens when non-standalone cr/dr notes are linked with another invoice through journal entry
 		non_reconciled_invoices = [x for x in non_reconciled_invoices if x.voucher_no not in cr_dr_notes]
+
+		non_reconciled_invoices = split_invoices_based_on_payment_terms(
+			non_reconciled_invoices, self.company
+		)
 
 		if self.invoice_limit:
 			non_reconciled_invoices = non_reconciled_invoices[: self.invoice_limit]
