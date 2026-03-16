@@ -1466,9 +1466,10 @@ def get_outstanding_reference_documents(args):
 		condition += " and cost_center='%s'" % args.get("cost_center")
 		accounting_dimensions_filter.append(ple.cost_center == args.get("cost_center"))
 
+	# Only apply posting_date filter at the PLE level; due_date is applied post-split
+	# because split rows have per-payment-term due_dates that differ from the PLE invoice due_date.
 	date_fields_dict = {
 		"posting_date": ["from_posting_date", "to_posting_date"],
-		"due_date": ["from_due_date", "to_due_date"],
 	}
 
 	for fieldname, date_fields in date_fields_dict.items():
@@ -1509,6 +1510,20 @@ def get_outstanding_reference_documents(args):
 		outstanding_invoices = split_invoices_based_on_payment_terms(
 			outstanding_invoices, args.get("company")
 		)
+
+		# Apply due_date filter post-split so per-term due_dates are used correctly
+		from_due = args.get("from_due_date")
+		to_due = args.get("to_due_date")
+		if from_due or to_due:
+			filtered = []
+			for inv in outstanding_invoices:
+				d = inv.get("due_date")
+				if from_due and d and d < getdate(from_due):
+					continue
+				if to_due and d and d > getdate(to_due):
+					continue
+				filtered.append(inv)
+			outstanding_invoices = filtered
 
 		for d in outstanding_invoices:
 			d["exchange_rate"] = 1
