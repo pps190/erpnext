@@ -390,19 +390,19 @@ def format_pick_list_columns(pl_details):
 	customers = list({d["customer"] for d in pl_details if d.get("customer")})
 	sales_orders = list({d["sales_order"] for d in pl_details if d.get("sales_order")})
 
-	def _fmt(items):
+	def _fmt(items, plural):
 		if not items:
 			return ""
 		if len(items) == 1:
 			return items[0]
-		return ", ".join(items)
+		return f"{len(items)} {plural} ({', '.join(items)})"
 
 	return (
-		_fmt(pick_lists),
-		_fmt(receipt_pls),
-		_fmt(sales_pls),
-		_fmt(customers),
-		_fmt(sales_orders),
+		_fmt(pick_lists, "Pick Lists"),
+		_fmt(receipt_pls, "Receipt PLs"),
+		_fmt(sales_pls, "Sales PLs"),
+		_fmt(customers, "Customers"),
+		_fmt(sales_orders, "Sales Orders"),
 	)
 
 
