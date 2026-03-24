@@ -395,7 +395,7 @@ def format_pick_list_columns(pl_details):
 			return ""
 		if len(items) == 1:
 			return items[0]
-		return f"{len(items)} {plural}"
+		return f"{len(items)} {plural} ({', '.join(items)})"
 
 	return (
 		_fmt(pick_lists, "Pick Lists"),

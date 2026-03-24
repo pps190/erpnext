@@ -83,7 +83,7 @@ frappe.query_reports["Stock Projected Qty"] = {
 			return _spq_format_as_link(raw, column.fieldname);
 		}
 
-		// Multiple values — render as clickable count badge
+		// Multiple values — e.g. "2 Pick Lists (PL-001, PL-002)", clickable to open detail dialog
 		return (
 			'<a href="#" onclick="_spq_show_pick_list_detail(\'' +
 			encodeURIComponent(data.pick_list_details) +
@@ -92,7 +92,7 @@ frappe.query_reports["Stock Projected Qty"] = {
 			"', '" +
 			data.warehouse +
 			'\'); return false;" ' +
-			'style="color:#7b1fa2; font-weight:500; cursor:pointer;">' +
+			'style="color:#7b1fa2; cursor:pointer;">' +
 			raw +
 			"</a>"
 		);
