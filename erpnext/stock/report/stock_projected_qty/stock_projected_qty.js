@@ -79,11 +79,11 @@ frappe.query_reports["Stock Projected Qty"] = {
 		}
 
 		// Single value — render as clickable link
-		if (!raw.match(/^\d+ /)) {
+		if (raw.indexOf(",") === -1) {
 			return _spq_format_as_link(raw, column.fieldname);
 		}
 
-		// Multiple values — render as clickable count badge
+		// Multiple values — render comma-separated text, clickable to open detail dialog
 		return (
 			'<a href="#" onclick="_spq_show_pick_list_detail(\'' +
 			encodeURIComponent(data.pick_list_details) +
@@ -92,7 +92,7 @@ frappe.query_reports["Stock Projected Qty"] = {
 			"', '" +
 			data.warehouse +
 			'\'); return false;" ' +
-			'style="color:#7b1fa2; font-weight:500; cursor:pointer;">' +
+			'style="color:#7b1fa2; cursor:pointer;">' +
 			raw +
 			"</a>"
 		);
