@@ -103,6 +103,9 @@ def validate_returned_items(doc):
 		(doc.doctype == "Purchase Invoice" or doc.doctype == "Sales Invoice") and not doc.update_stock
 	)
 
+	if not doc.get("items"):
+		return
+
 	items_returned = False
 	for d in doc.get("items"):
 		if d.item_code and (flt(d.qty) < 0 or flt(d.get("received_qty")) < 0):

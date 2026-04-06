@@ -718,8 +718,7 @@
    "label": "Items",
    "oldfieldname": "entries",
    "oldfieldtype": "Table",
-   "options": "Sales Invoice Item",
-   "reqd": 1
+   "options": "Sales Invoice Item"
   },
   {
    "fieldname": "pricing_rule_details",
