@@ -37,7 +37,7 @@ class calculate_taxes_and_totals(object):
 		return items
 
 	def calculate(self):
-		if not len(self._items):
+		if not len(self._items) and not self.doc.get("taxes"):
 			return
 
 		self.discount_amount_applied = False
@@ -366,64 +366,76 @@ class calculate_taxes_and_totals(object):
 			]
 		)
 
-		for n, item in enumerate(self._items):
-			item_tax_map = self._load_item_tax_rate(item.item_tax_rate)
+		if not self._items:
+			# No items — only Actual taxes (e.g. tax-only debit note)
 			for i, tax in enumerate(self.doc.get("taxes")):
-				# tax_amount represents the amount of tax for the current step
-				current_tax_amount = self.get_current_tax_amount(item, tax, item_tax_map)
-
-				# Adjust divisional loss to the last item
 				if tax.charge_type == "Actual":
-					actual_tax_dict[tax.idx] -= current_tax_amount
-					if n == len(self._items) - 1:
-						current_tax_amount += actual_tax_dict[tax.idx]
+					tax.tax_amount_after_discount_amount = tax.tax_amount
 
-				# accumulate tax amount into tax.tax_amount
-				if tax.charge_type != "Actual" and not (
-					self.discount_amount_applied and self.doc.apply_discount_on == "Grand Total"
-				):
-					tax.tax_amount += current_tax_amount
+				self.round_off_totals(tax)
+				self._set_in_company_currency(tax, ["tax_amount", "tax_amount_after_discount_amount"])
+				self.round_off_base_values(tax)
+				self.set_cumulative_total(i, tax)
+				self._set_in_company_currency(tax, ["total"])
+		else:
+			for n, item in enumerate(self._items):
+				item_tax_map = self._load_item_tax_rate(item.item_tax_rate)
+				for i, tax in enumerate(self.doc.get("taxes")):
+					# tax_amount represents the amount of tax for the current step
+					current_tax_amount = self.get_current_tax_amount(item, tax, item_tax_map)
 
-				# store tax_amount for current item as it will be used for
-				# charge type = 'On Previous Row Amount'
-				tax.tax_amount_for_current_item = current_tax_amount
+					# Adjust divisional loss to the last item
+					if tax.charge_type == "Actual":
+						actual_tax_dict[tax.idx] -= current_tax_amount
+						if n == len(self._items) - 1:
+							current_tax_amount += actual_tax_dict[tax.idx]
 
-				# set tax after discount
-				tax.tax_amount_after_discount_amount += current_tax_amount
-
-				current_tax_amount = self.get_tax_amount_if_for_valuation_or_deduction(current_tax_amount, tax)
-
-				# note: grand_total_for_current_item contains the contribution of
-				# item's amount, previously applied tax and the current tax on that item
-				if i == 0:
-					tax.grand_total_for_current_item = flt(item.net_amount + current_tax_amount)
-				else:
-					tax.grand_total_for_current_item = flt(
-						self.doc.get("taxes")[i - 1].grand_total_for_current_item + current_tax_amount
-					)
-
-				# set precision in the last item iteration
-				if n == len(self._items) - 1:
-					self.round_off_totals(tax)
-					self._set_in_company_currency(tax, ["tax_amount", "tax_amount_after_discount_amount"])
-
-					self.round_off_base_values(tax)
-					self.set_cumulative_total(i, tax)
-
-					self._set_in_company_currency(tax, ["total"])
-
-					# adjust Discount Amount loss in last tax iteration
-					if (
-						i == (len(self.doc.get("taxes")) - 1)
-						and self.discount_amount_applied
-						and self.doc.discount_amount
-						and self.doc.apply_discount_on == "Grand Total"
-						and not rounding_adjustment_computed
+					# accumulate tax amount into tax.tax_amount
+					if tax.charge_type != "Actual" and not (
+						self.discount_amount_applied and self.doc.apply_discount_on == "Grand Total"
 					):
-						self.doc.rounding_adjustment = flt(
-							self.doc.grand_total - flt(self.doc.discount_amount) - tax.total,
-							self.doc.precision("rounding_adjustment"),
+						tax.tax_amount += current_tax_amount
+
+					# store tax_amount for current item as it will be used for
+					# charge type = 'On Previous Row Amount'
+					tax.tax_amount_for_current_item = current_tax_amount
+
+					# set tax after discount
+					tax.tax_amount_after_discount_amount += current_tax_amount
+
+					current_tax_amount = self.get_tax_amount_if_for_valuation_or_deduction(current_tax_amount, tax)
+
+					# note: grand_total_for_current_item contains the contribution of
+					# item's amount, previously applied tax and the current tax on that item
+					if i == 0:
+						tax.grand_total_for_current_item = flt(item.net_amount + current_tax_amount)
+					else:
+						tax.grand_total_for_current_item = flt(
+							self.doc.get("taxes")[i - 1].grand_total_for_current_item + current_tax_amount
 						)
+
+					# set precision in the last item iteration
+					if n == len(self._items) - 1:
+						self.round_off_totals(tax)
+						self._set_in_company_currency(tax, ["tax_amount", "tax_amount_after_discount_amount"])
+
+						self.round_off_base_values(tax)
+						self.set_cumulative_total(i, tax)
+
+						self._set_in_company_currency(tax, ["total"])
+
+						# adjust Discount Amount loss in last tax iteration
+						if (
+							i == (len(self.doc.get("taxes")) - 1)
+							and self.discount_amount_applied
+							and self.doc.discount_amount
+							and self.doc.apply_discount_on == "Grand Total"
+							and not rounding_adjustment_computed
+						):
+							self.doc.rounding_adjustment = flt(
+								self.doc.grand_total - flt(self.doc.discount_amount) - tax.total,
+								self.doc.precision("rounding_adjustment"),
+							)
 
 	def get_tax_amount_if_for_valuation_or_deduction(self, tax_amount, tax):
 		# if just for valuation, do not add the tax amount in total

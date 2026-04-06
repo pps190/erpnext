@@ -595,8 +595,7 @@
    "label": "Items",
    "oldfieldname": "entries",
    "oldfieldtype": "Table",
-   "options": "Purchase Invoice Item",
-   "reqd": 1
+   "options": "Purchase Invoice Item"
   },
   {
    "collapsible": 1,

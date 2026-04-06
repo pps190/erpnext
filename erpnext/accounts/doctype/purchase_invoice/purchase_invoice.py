@@ -975,12 +975,13 @@ class PurchaseInvoice(BuyingController):
 							item.item_tax_amount, item.precision("item_tax_amount")
 						)
 
-		assets = frappe.db.get_all(
-			"Asset", filters={"purchase_invoice": self.name, "item_code": item.item_code}
-		)
-		for asset in assets:
-			frappe.db.set_value("Asset", asset.name, "gross_purchase_amount", flt(item.valuation_rate))
-			frappe.db.set_value("Asset", asset.name, "purchase_receipt_amount", flt(item.valuation_rate))
+		if self.get("items"):
+			assets = frappe.db.get_all(
+				"Asset", filters={"purchase_invoice": self.name, "item_code": item.item_code}
+			)
+			for asset in assets:
+				frappe.db.set_value("Asset", asset.name, "gross_purchase_amount", flt(item.valuation_rate))
+				frappe.db.set_value("Asset", asset.name, "purchase_receipt_amount", flt(item.valuation_rate))
 
 	def make_stock_adjustment_entry(
 		self, gl_entries, item, voucher_wise_stock_value, account_currency
