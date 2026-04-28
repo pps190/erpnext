@@ -435,39 +435,71 @@ def add_cc(args=None):
 
 
 def get_orphan_payment_term_allocation(reference_doctype, reference_name, exclude_payment_entry=None):
-	"""Sum of allocated_amount on submitted Payment Entry References that point at this
-	invoice but have no payment_term set.
+	"""Sum of payments against this invoice that have already reduced its total
+	outstanding (via Payment Ledger Entry) but were NOT booked against any specific
+	row of `tabPayment Schedule`.
 
-	These "orphan" allocations have already reduced the invoice's total outstanding via
-	the Payment Ledger Entry path, but Payment Schedule.paid_amount was never updated
-	(update_payment_schedule() in payment_entry.py skips refs with no payment_term).
-	Per-term outstanding views therefore over-report what is still owed.
+	Authoritative source: Payment Ledger Entry. Mirrors how AR/AP report's
+	`row.paid` / `row.credit_note` are accumulated — by walking PLE — so any voucher
+	that writes PLE is automatically picked up:
 
-	Callers fold this amount across the invoice's payment schedule rows in due_date
-	(FIFO) order, so the per-term view matches the invoice-level view.
+	- Payment Entry References with payment_term set: NOT orphan; `update_payment_schedule()`
+	  has already booked them into Payment Schedule.paid_amount.
+	- Payment Entry References with NULL/empty payment_term: orphan (skipped by
+	  `update_payment_schedule()`).
+	- Journal Entry Account rows: orphan by construction (the table has no
+	  payment_term column). Includes auto-generated Debit Notes / Credit Notes,
+	  manual JEs, and Payment Reconciliation's dr_cr_note path.
+	- Future voucher types that write PLE: orphan unless they also book Payment
+	  Schedule themselves.
+
+	Computed as `total_paid_via_PLE - already_booked_to_payment_schedule`. The
+	subtraction guarantees we never double-count what `update_payment_schedule()`
+	has already absorbed.
 
 	Pass exclude_payment_entry when the caller is itself a Payment Entry being edited —
-	its own submitted refs would otherwise double-count against the live form state.
+	its own submitted PLE rows would otherwise double-count against the live form state.
 	"""
-	conditions = ""
-	values = [reference_doctype, reference_name]
+	# Total paid against this invoice, signed so positive = paid down. PLE stores
+	# amount with sign already aligned to the account type (negative on the AR/AP
+	# row when the invoice is reduced); flip the sign so we work in "paid" units.
+	pe_exclude_clauses = ""
+	pe_exclude_values = []
 	if exclude_payment_entry:
-		conditions = "AND per.parent != %s"
-		values.append(exclude_payment_entry)
+		# Exclude the editing PE's submitted PLE rows so the live form state isn't
+		# double-counted against itself.
+		pe_exclude_clauses = "AND NOT (ple.voucher_type = 'Payment Entry' AND ple.voucher_no = %s)"
+		pe_exclude_values = [exclude_payment_entry]
 
-	result = frappe.db.sql(
+	ple_result = frappe.db.sql(
 		"""
-		SELECT COALESCE(SUM(per.allocated_amount), 0)
-		FROM `tabPayment Entry Reference` per
-		JOIN `tabPayment Entry` pe ON pe.name = per.parent AND pe.docstatus = 1
-		WHERE per.reference_doctype = %s
-		  AND per.reference_name = %s
-		  AND (per.payment_term IS NULL OR per.payment_term = '')
-		  {conditions}
-		""".format(conditions=conditions),
-		values,
+		SELECT COALESCE(SUM(-ple.amount_in_account_currency), 0)
+		FROM `tabPayment Ledger Entry` ple
+		WHERE ple.against_voucher_type = %s
+		  AND ple.against_voucher_no = %s
+		  AND ple.delinked = 0
+		  AND NOT (ple.voucher_type = ple.against_voucher_type AND ple.voucher_no = ple.against_voucher_no)
+		  {pe_exclude}
+		""".format(pe_exclude=pe_exclude_clauses),
+		[reference_doctype, reference_name] + pe_exclude_values,
 	)
-	return flt(result[0][0]) if result else 0.0
+	total_paid = flt(ple_result[0][0]) if ple_result else 0.0
+
+	# Sum of what's already been booked into Payment Schedule rows for this invoice.
+	# These are NOT orphan — update_payment_schedule() handled them already.
+	ps_result = frappe.db.sql(
+		"""
+		SELECT COALESCE(SUM(paid_amount + discounted_amount), 0)
+		FROM `tabPayment Schedule`
+		WHERE parent = %s AND parenttype = %s
+		""",
+		(reference_name, reference_doctype),
+	)
+	already_booked = flt(ps_result[0][0]) if ps_result else 0.0
+
+	orphan = total_paid - already_booked
+	# Treat tiny rounding residuals as zero
+	return orphan if abs(orphan) > 0.005 else 0.0
 
 
 def distribute_orphan_payment_to_terms(
