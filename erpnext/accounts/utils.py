@@ -434,6 +434,82 @@ def add_cc(args=None):
 	return cc.name
 
 
+def get_orphan_payment_term_allocation(reference_doctype, reference_name, exclude_payment_entry=None):
+	"""Sum of allocated_amount on submitted Payment Entry References that point at this
+	invoice but have no payment_term set.
+
+	These "orphan" allocations have already reduced the invoice's total outstanding via
+	the Payment Ledger Entry path, but Payment Schedule.paid_amount was never updated
+	(update_payment_schedule() in payment_entry.py skips refs with no payment_term).
+	Per-term outstanding views therefore over-report what is still owed.
+
+	Callers fold this amount across the invoice's payment schedule rows in due_date
+	(FIFO) order, so the per-term view matches the invoice-level view.
+
+	Pass exclude_payment_entry when the caller is itself a Payment Entry being edited —
+	its own submitted refs would otherwise double-count against the live form state.
+	"""
+	conditions = ""
+	values = [reference_doctype, reference_name]
+	if exclude_payment_entry:
+		conditions = "AND per.parent != %s"
+		values.append(exclude_payment_entry)
+
+	result = frappe.db.sql(
+		"""
+		SELECT COALESCE(SUM(per.allocated_amount), 0)
+		FROM `tabPayment Entry Reference` per
+		JOIN `tabPayment Entry` pe ON pe.name = per.parent AND pe.docstatus = 1
+		WHERE per.reference_doctype = %s
+		  AND per.reference_name = %s
+		  AND (per.payment_term IS NULL OR per.payment_term = '')
+		  {conditions}
+		""".format(conditions=conditions),
+		values,
+	)
+	return flt(result[0][0]) if result else 0.0
+
+
+def distribute_orphan_payment_to_terms(
+	reference_doctype,
+	reference_name,
+	terms,
+	outstanding_key="outstanding",
+	paid_key=None,
+	due_date_key="due_date",
+	exclude_payment_entry=None,
+):
+	"""Mutate `terms` in place: subtract orphan-payment allocations (NULL payment_term
+	refs on submitted Payment Entries) from each term's outstanding, FIFO by due_date.
+
+	If `paid_key` is provided, also add the absorbed amount to that field on each term
+	(useful for AR/AP report rows where "paid" is shown alongside "outstanding").
+
+	Returns the unallocated remainder (should normally be 0; positive means orphan
+	payments exceed total per-term outstanding, e.g. over-payment or rounding).
+	"""
+	orphan_amount = get_orphan_payment_term_allocation(
+		reference_doctype, reference_name, exclude_payment_entry=exclude_payment_entry
+	)
+	if not orphan_amount or not terms:
+		return orphan_amount
+
+	remaining = flt(orphan_amount)
+	for term in sorted(terms, key=lambda t: t.get(due_date_key) or getdate("9999-12-31")):
+		if remaining <= 0:
+			break
+		cap = flt(term.get(outstanding_key))
+		if cap <= 0:
+			continue
+		absorb = min(cap, remaining)
+		term[outstanding_key] = cap - absorb
+		if paid_key:
+			term[paid_key] = flt(term.get(paid_key)) + absorb
+		remaining -= absorb
+
+	return remaining
+
+
 def reconcile_against_document(args, skip_ref_details_update_for_pe=False):  # nosemgrep
 	"""
 	Cancel PE or JV, Update against document, split if required and resubmit

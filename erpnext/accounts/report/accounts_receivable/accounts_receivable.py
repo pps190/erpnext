@@ -472,6 +472,20 @@ class ReceivablePayableReport(object):
 			if term.outstanding:
 				self.allocate_closing_to_term(row, term, "credit_note")
 
+		# Fold any orphan-payment allocations (PE refs with NULL payment_term) into the
+		# per-term outstanding via FIFO so the per-term view matches the invoice-level
+		# total. Without this, NULL-term payments only show up in the by-invoice view.
+		from erpnext.accounts.utils import distribute_orphan_payment_to_terms
+
+		distribute_orphan_payment_to_terms(
+			row.voucher_type,
+			row.voucher_no,
+			row.payment_terms,
+			outstanding_key="outstanding",
+			paid_key="paid",
+			due_date_key="due_date",
+		)
+
 		row.payment_terms = sorted(row.payment_terms, key=lambda x: x["due_date"])
 
 	def get_payment_terms(self, row):

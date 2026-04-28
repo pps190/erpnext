@@ -1695,6 +1695,26 @@ def get_split_invoice_rows(
 			)
 		)
 
+	# Fold orphan-payment allocations (submitted PE refs with NULL payment_term) into
+	# per-term outstanding via FIFO. Without this, Payment Reconciliation / Payment
+	# Entry would still offer to allocate against term amounts that were already paid
+	# at the invoice (PLE) level by NULL-term refs.
+	if split_rows:
+		from erpnext.accounts.utils import distribute_orphan_payment_to_terms
+
+		distribute_orphan_payment_to_terms(
+			invoice.voucher_type,
+			invoice.voucher_no,
+			split_rows,
+			outstanding_key="outstanding_amount",
+			due_date_key="due_date",
+		)
+		# Keep payment_term_outstanding aligned with outstanding_amount post-fold
+		for row in split_rows:
+			row["payment_term_outstanding"] = row["outstanding_amount"]
+		# Drop rows that became fully paid by orphan allocations
+		split_rows = [r for r in split_rows if flt(r["outstanding_amount"]) > 0.1]
+
 	return split_rows
 
 
@@ -2468,6 +2488,24 @@ def get_reference_as_per_payment_terms(
 					"allocated_amount": payment_term_outstanding,
 				}
 			)
+
+	# Fold orphan-payment allocations (submitted PE refs with NULL payment_term) into
+	# per-term outstanding via FIFO so a PE built from this invoice doesn't propose
+	# allocations against amounts already paid by NULL-term refs.
+	if references:
+		from erpnext.accounts.utils import distribute_orphan_payment_to_terms
+
+		distribute_orphan_payment_to_terms(
+			dt,
+			dn,
+			references,
+			outstanding_key="outstanding_amount",
+			due_date_key="due_date",
+		)
+		for ref in references:
+			ref["payment_term_outstanding"] = ref["outstanding_amount"]
+			ref["allocated_amount"] = ref["outstanding_amount"]
+		references = [r for r in references if flt(r["outstanding_amount"]) > 0.1]
 
 	return references
 
