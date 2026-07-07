@@ -818,9 +818,20 @@ class update_entries_after(object):
 			if sle.voucher_type in ["Purchase Receipt", "Purchase Invoice"] and frappe.get_cached_value(
 				sle.voucher_type, sle.voucher_no, "is_internal_supplier"
 			):
-				frappe.db.set_value(
-					f"{sle.voucher_type} Item", sle.voucher_detail_no, "valuation_rate", sle.outgoing_rate
-				)
+				# Sync valuation_rate only for rows that consume it in GL: internal-transfer
+				# rows (from_warehouse set) book the from-warehouse credit as
+				# valuation_rate * stock_qty, so it must track the SLE outgoing rate.
+				# For ordinary inter-company RETURN rows the field is the validate-time
+				# invoice snapshot ((net + tax + landed cost) / qty) that
+				# make_stock_adjustment_entry compares against the SLE value to book the
+				# gap to COGS — overwriting it with the SLE rate erases that gap and makes
+				# GL regeneration on repost permanently unbalanced.
+				if frappe.db.get_value(
+					f"{sle.voucher_type} Item", sle.voucher_detail_no, "from_warehouse"
+				):
+					frappe.db.set_value(
+						f"{sle.voucher_type} Item", sle.voucher_detail_no, "valuation_rate", sle.outgoing_rate
+					)
 		else:
 			frappe.db.set_value(
 				"Purchase Receipt Item Supplied", sle.voucher_detail_no, "rate", outgoing_rate
