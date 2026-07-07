@@ -424,3 +424,86 @@ class TestRepostItemValuation(FrappeTestCase, StockTestMixin):
 
 		self.assertRaises(frappe.ValidationError, riv.save)
 		doc.cancel()
+
+
+class TestUpdateRateOnPurchaseReceiptGating(FrappeTestCase):
+	"""Regression tests for the internal-supplier valuation_rate overwrite gating.
+
+	update_rate_on_purchase_receipt used to overwrite the voucher item's
+	valuation_rate with the SLE outgoing rate for EVERY negative-qty PR/PI SLE of
+	an internal supplier. For ordinary inter-company RETURN rows (no
+	from_warehouse) that field is the validate-time invoice snapshot that
+	make_stock_adjustment_entry needs to regenerate the COGS gap line — the
+	overwrite made GL regeneration on repost permanently unbalanced (prod case
+	AP-DA1284: Debit and Credit not equal, difference -1.43 = per-unit landed
+	cost). The overwrite must fire ONLY for rows with from_warehouse set, whose
+	GL books the from-warehouse credit as valuation_rate * stock_qty.
+	"""
+
+	def _make_sle(self, voucher_type="Purchase Invoice"):
+		return frappe._dict(
+			{
+				"voucher_type": voucher_type,
+				"voucher_no": "TEST-VOUCHER-001",
+				"voucher_detail_no": "test-item-row-001",
+				"actual_qty": -1.0,
+				"outgoing_rate": 26.704,
+			}
+		)
+
+	def _run(self, sle, is_internal_supplier, from_warehouse, item_row_exists=True):
+		from unittest.mock import patch
+
+		from erpnext.stock.stock_ledger import update_entries_after
+
+		obj = update_entries_after.__new__(update_entries_after)
+
+		def cached_value(doctype, name, fieldname):
+			if fieldname == "is_internal_supplier":
+				return is_internal_supplier
+			if fieldname == "is_subcontracted":
+				return 0
+			return None
+
+		with patch("frappe.db.exists", return_value=item_row_exists), patch(
+			"frappe.get_cached_value", side_effect=cached_value
+		), patch("frappe.db.get_value", return_value=from_warehouse), patch(
+			"frappe.db.set_value"
+		) as set_value:
+			obj.update_rate_on_purchase_receipt(sle, 26.704)
+
+		return set_value
+
+	def test_no_overwrite_for_internal_supplier_return_without_from_warehouse(self):
+		"""The AP-DA1284 case: snapshot must survive the repost."""
+		for voucher_type in ("Purchase Invoice", "Purchase Receipt"):
+			sle = self._make_sle(voucher_type)
+			set_value = self._run(sle, is_internal_supplier=1, from_warehouse=None)
+			for c in set_value.call_args_list:
+				self.assertNotEqual(
+					c.args[2] if len(c.args) > 2 else c.kwargs.get("fieldname"),
+					"valuation_rate",
+					f"valuation_rate must not be overwritten for {voucher_type} return rows without from_warehouse",
+				)
+
+	def test_overwrite_kept_for_internal_transfer_row_with_from_warehouse(self):
+		"""Rows with from_warehouse book GL from valuation_rate — sync must continue."""
+		sle = self._make_sle()
+		set_value = self._run(sle, is_internal_supplier=1, from_warehouse="Stores - _TC")
+		set_value.assert_any_call(
+			"Purchase Invoice Item", sle.voucher_detail_no, "valuation_rate", sle.outgoing_rate
+		)
+
+	def test_no_overwrite_for_external_supplier(self):
+		sle = self._make_sle()
+		set_value = self._run(sle, is_internal_supplier=0, from_warehouse="Stores - _TC")
+		for c in set_value.call_args_list:
+			self.assertNotEqual(
+				c.args[2] if len(c.args) > 2 else c.kwargs.get("fieldname"), "valuation_rate"
+			)
+
+	def test_supplied_item_branch_untouched(self):
+		"""Old-flow subcontracting supplied rows (item row does not exist) keep their rate sync."""
+		sle = self._make_sle("Purchase Receipt")
+		set_value = self._run(sle, is_internal_supplier=1, from_warehouse=None, item_row_exists=False)
+		set_value.assert_any_call("Purchase Receipt Item Supplied", sle.voucher_detail_no, "rate", 26.704)
