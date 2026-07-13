@@ -434,8 +434,12 @@ class SalesInvoice(SellingController):
 					"second_source_field": "qty",
 					"second_join_field": "so_detail",
 					"overflow_type": "delivery",
+					# PPS (pps190/next#605): core deposit rows (is_core=1) never count
+					# toward the order's qty rollup.
 					"extra_cond": """ and exists(select name from `tabSales Invoice`
-					where name=`tabSales Invoice Item`.parent and update_stock = 1)""",
+					where name=`tabSales Invoice Item`.parent and update_stock = 1)
+					and ifnull(`tabSales Invoice Item`.is_core, 0) = 0""",
+					"second_source_extra_cond": """ and ifnull(`tabDelivery Note Item`.is_core, 0) = 0""",
 				}
 			)
 			if cint(self.is_return):
@@ -450,7 +454,9 @@ class SalesInvoice(SellingController):
 						"second_source_dt": "Delivery Note Item",
 						"second_source_field": "-1 * qty",
 						"second_join_field": "so_detail",
-						"extra_cond": """ and exists (select name from `tabSales Invoice` where name=`tabSales Invoice Item`.parent and update_stock=1 and is_return=1)""",
+						"extra_cond": """ and exists (select name from `tabSales Invoice` where name=`tabSales Invoice Item`.parent and update_stock=1 and is_return=1)
+						and ifnull(`tabSales Invoice Item`.is_core, 0) = 0""",
+						"second_source_extra_cond": """ and ifnull(`tabDelivery Note Item`.is_core, 0) = 0""",
 					}
 				)
 
