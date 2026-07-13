@@ -472,19 +472,28 @@ class ReceivablePayableReport(object):
 			if term.outstanding:
 				self.allocate_closing_to_term(row, term, "credit_note")
 
-		# Fold any orphan-payment allocations (PE refs with NULL payment_term) into the
-		# per-term outstanding via FIFO so the per-term view matches the invoice-level
-		# total. Without this, NULL-term payments only show up in the by-invoice view.
-		from erpnext.accounts.utils import distribute_orphan_payment_to_terms
-
-		distribute_orphan_payment_to_terms(
-			row.voucher_type,
-			row.voucher_no,
-			row.payment_terms,
-			outstanding_key="outstanding",
-			paid_key="paid",
-			due_date_key="due_date",
-		)
+		# Whatever remains in row.paid / row.credit_note is orphan money (PLE-level
+		# payments never booked into Payment Schedule — JE reconciliations, PE refs
+		# with NULL payment_term) that the loop above could not place because its
+		# term already carries a Payment Schedule booking (`if not term.paid` skips
+		# it, since allocate_closing_to_term overwrites rather than adds). Fold that
+		# remainder into terms that still have outstanding, FIFO by due date.
+		# Must work off the in-memory remainder, not a DB-derived orphan total: the
+		# loop above already consumed part (or all) of the orphan money, and only
+		# row.paid knows how much is genuinely left (see #42 — re-deriving from
+		# PLE − Payment Schedule double-counted JE payments).
+		for key in ("paid", "credit_note"):
+			if flt(row[key]) <= 0:
+				continue
+			for term in sorted(row.payment_terms, key=lambda x: x["due_date"]):
+				if flt(row[key]) <= 0:
+					break
+				if flt(term.outstanding) <= 0:
+					continue
+				absorb = min(flt(term.outstanding), flt(row[key]))
+				term[key] = flt(term[key]) + absorb
+				term.outstanding -= absorb
+				row[key] -= absorb
 
 		row.payment_terms = sorted(row.payment_terms, key=lambda x: x["due_date"])
 
