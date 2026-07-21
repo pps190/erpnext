@@ -439,11 +439,36 @@ class PaymentEntry(AccountsController):
 					ref_doc = frappe.get_doc(d.reference_doctype, d.reference_name)
 
 					if d.reference_doctype == "Payment Entry":
+						if d.reference_name == self.name:
+							frappe.throw(
+								_("Row #{0}: A Payment Entry cannot reference itself").format(d.idx)
+							)
 						if ref_doc.party_type != self.party_type or ref_doc.party != self.party:
 							frappe.throw(
 								_("{0} {1} is not associated with {2} {3}").format(
 									_(d.reference_doctype), d.reference_name, _(self.party_type), self.party
 								)
+							)
+						# Only invoice-direction residuals (positive net in the payment
+						# ledger, e.g. an on-account receipt from a supplier) may be
+						# settled by reference. Advance credits (negative net) are
+						# handled through Payment Reconciliation instead.
+						ple_net = flt(
+							frappe.db.get_value(
+								"Payment Ledger Entry",
+								{
+									"voucher_type": "Payment Entry",
+									"voucher_no": d.reference_name,
+									"delinked": 0,
+								},
+								"sum(amount)",
+							)
+						)
+						if ple_net <= 0:
+							frappe.throw(
+								_(
+									"Row #{0}: {1} has no positive outstanding balance. Advance credits are settled via Payment Reconciliation, not as a Payment Entry reference."
+								).format(d.idx, d.reference_name)
 							)
 					elif d.reference_doctype != "Journal Entry":
 						if self.party != ref_doc.get(scrub(self.party_type)):
