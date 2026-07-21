@@ -428,7 +428,7 @@ class PaymentEntry(AccountsController):
 			if d.reference_doctype not in valid_reference_doctypes:
 				frappe.throw(
 					_("Reference Doctype must be one of {0}").format(
-						comma_or((_(d) for d in valid_reference_doctypes))
+						comma_or([_(v) for v in valid_reference_doctypes])
 					)
 				)
 
@@ -438,7 +438,39 @@ class PaymentEntry(AccountsController):
 				else:
 					ref_doc = frappe.get_doc(d.reference_doctype, d.reference_name)
 
-					if d.reference_doctype != "Journal Entry":
+					if d.reference_doctype == "Payment Entry":
+						if d.reference_name == self.name:
+							frappe.throw(
+								_("Row #{0}: A Payment Entry cannot reference itself").format(d.idx)
+							)
+						if ref_doc.party_type != self.party_type or ref_doc.party != self.party:
+							frappe.throw(
+								_("{0} {1} is not associated with {2} {3}").format(
+									_(d.reference_doctype), d.reference_name, _(self.party_type), self.party
+								)
+							)
+						# Only invoice-direction residuals (positive net in the payment
+						# ledger, e.g. an on-account receipt from a supplier) may be
+						# settled by reference. Advance credits (negative net) are
+						# handled through Payment Reconciliation instead.
+						ple_net = flt(
+							frappe.db.get_value(
+								"Payment Ledger Entry",
+								{
+									"voucher_type": "Payment Entry",
+									"voucher_no": d.reference_name,
+									"delinked": 0,
+								},
+								"sum(amount)",
+							)
+						)
+						if ple_net <= 0:
+							frappe.throw(
+								_(
+									"Row #{0}: {1} has no positive outstanding balance. Advance credits are settled via Payment Reconciliation, not as a Payment Entry reference."
+								).format(d.idx, d.reference_name)
+							)
+					elif d.reference_doctype != "Journal Entry":
 						if self.party != ref_doc.get(scrub(self.party_type)):
 							frappe.throw(
 								_("{0} {1} is not associated with {2} {3}").format(
@@ -476,9 +508,9 @@ class PaymentEntry(AccountsController):
 
 	def get_valid_reference_doctypes(self):
 		if self.party_type == "Customer":
-			return ("Sales Order", "Sales Invoice", "Journal Entry", "Dunning")
+			return ("Sales Order", "Sales Invoice", "Journal Entry", "Dunning", "Payment Entry")
 		elif self.party_type == "Supplier":
-			return ("Purchase Order", "Purchase Invoice", "Journal Entry")
+			return ("Purchase Order", "Purchase Invoice", "Journal Entry", "Payment Entry")
 		elif self.party_type == "Shareholder":
 			return ("Journal Entry",)
 		elif self.party_type == "Employee":
@@ -1983,6 +2015,23 @@ def get_reference_details(reference_doctype, reference_name, party_account_curre
 		else:
 			exchange_rate = 1
 			outstanding_amount = get_outstanding_on_journal_entry(reference_name)
+
+	elif reference_doctype == "Payment Entry":
+		# e.g. an on-account Receive-from-Supplier leaves a positive residual
+		# on the payable; the payment ledger holds its live outstanding.
+		total_amount = flt(
+			ref_doc.get("paid_amount")
+			if ref_doc.get("payment_type") == "Receive"
+			else ref_doc.get("received_amount")
+		)
+		exchange_rate = flt(ref_doc.get("source_exchange_rate")) or 1
+		outstanding_amount = flt(
+			frappe.db.get_value(
+				"Payment Ledger Entry",
+				{"voucher_type": "Payment Entry", "voucher_no": reference_name, "delinked": 0},
+				"sum(amount)",
+			)
+		)
 
 	elif reference_doctype != "Journal Entry":
 		if not total_amount:
