@@ -1453,6 +1453,25 @@ frappe.ui.form.on('Payment Entry Deduction', {
 	}
 })
 frappe.ui.form.on('Payment Entry', {
+	before_submit: function(frm) {
+		if (
+			frm.doc.payment_type === "Receive" &&
+			frm.doc.party_type === "Supplier" &&
+			!(frm.doc.references || []).some((r) => flt(r.outstanding_amount) < 0)
+		) {
+			return new Promise((resolve, reject) => {
+				frappe.confirm(
+					__(
+						"You are recording money <b>received from Supplier {0}</b>: the bank account will increase and the amount owed to this supplier will <b>increase</b> by {1}.<br><br>If you meant to <b>pay</b> this supplier, click No and change Payment Type to Pay.",
+						[frm.doc.party_name || frm.doc.party, format_currency(frm.doc.paid_amount, frm.doc.paid_from_account_currency)]
+					),
+					() => resolve(),
+					() => reject()
+				);
+			});
+		}
+	},
+
 	cost_center: function(frm){
 		if (frm.doc.posting_date && (frm.doc.paid_from||frm.doc.paid_to)) {
 			return frappe.call({

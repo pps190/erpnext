@@ -928,6 +928,18 @@ class PaymentEntry(AccountsController):
 		):
 			return
 
+		# On-account receipt from a supplier (e.g. CARM duty refunds) has no
+		# invoice to reference; direction is confirmed client-side before submit.
+		if self.payment_type == "Receive" and self.party_type == "Supplier" and not self.get("references"):
+			frappe.msgprint(
+				_(
+					"No references selected: this records an on-account receipt from Supplier {0} and increases the payable balance by {1}."
+				).format(self.party, fmt_money(self.paid_amount, currency=self.paid_from_account_currency)),
+				indicator="orange",
+				alert=True,
+			)
+			return
+
 		total_negative_outstanding = flt(
 			sum(
 				abs(flt(d.outstanding_amount)) for d in self.get("references") if flt(d.outstanding_amount) < 0
