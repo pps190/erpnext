@@ -1100,10 +1100,16 @@ class PaymentEntry(AccountsController):
 
 				gle = party_gl_dict.copy()
 
+				# dr_or_cr above follows the party account type only; an on-account
+				# receipt from a supplier must credit the payable instead.
+				row_dr_or_cr = dr_or_cr
+				if self.payment_type == "Receive" and self.party_type == "Supplier":
+					row_dr_or_cr = "credit"
+
 				gle.update(
 					{
-						dr_or_cr + "_in_account_currency": self.unallocated_amount,
-						dr_or_cr: base_unallocated_amount,
+						row_dr_or_cr + "_in_account_currency": self.unallocated_amount,
+						row_dr_or_cr: base_unallocated_amount,
 					}
 				)
 
