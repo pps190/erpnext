@@ -846,6 +846,15 @@ frappe.ui.form.on('Payment Entry', {
 			total_negative_outstanding = flt(total_negative_outstanding, precision("outstanding_amount"))
 			if(paid_amount > total_negative_outstanding) {
 				if(total_negative_outstanding == 0) {
+					// On-account Receive-from-Supplier with no references is allowed
+					// (relaxed server-side); nothing to allocate, so skip the warning.
+					if (
+						frm.doc.payment_type == "Receive" &&
+						frm.doc.party_type == "Supplier" &&
+						!(frm.doc.references || []).length
+					) {
+						return false;
+					}
 					frappe.msgprint(
 						__("Cannot {0} {1} {2} without any negative outstanding invoice", [frm.doc.payment_type,
 							(frm.doc.party_type=="Customer" ? "to" : "from"), frm.doc.party_type])
