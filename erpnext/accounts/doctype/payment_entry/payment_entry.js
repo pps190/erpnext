@@ -107,9 +107,9 @@ frappe.ui.form.on('Payment Entry', {
 
 		frm.set_query("reference_doctype", "references", function() {
 			if (frm.doc.party_type == "Customer") {
-				var doctypes = ["Sales Order", "Sales Invoice", "Journal Entry", "Dunning"];
+				var doctypes = ["Sales Order", "Sales Invoice", "Journal Entry", "Dunning", "Payment Entry"];
 			} else if (frm.doc.party_type == "Supplier") {
-				var doctypes = ["Purchase Order", "Purchase Invoice", "Journal Entry"];
+				var doctypes = ["Purchase Order", "Purchase Invoice", "Journal Entry", "Payment Entry"];
 			} else {
 				var doctypes = ["Journal Entry"];
 			}
@@ -139,6 +139,9 @@ frappe.ui.form.on('Payment Entry', {
 
 			if (in_list(party_type_doctypes, child.reference_doctype)) {
 				filters[doc.party_type.toLowerCase()] = doc.party;
+			} else if (child.reference_doctype === "Payment Entry") {
+				filters["party_type"] = doc.party_type;
+				filters["party"] = doc.party;
 			}
 
 			return {
@@ -986,18 +989,18 @@ frappe.ui.form.on('Payment Entry', {
 			}
 
 			if(frm.doc.party_type=="Customer" &&
-				!in_list(["Sales Order", "Sales Invoice", "Journal Entry", "Dunning"], row.reference_doctype)
+				!in_list(["Sales Order", "Sales Invoice", "Journal Entry", "Dunning", "Payment Entry"], row.reference_doctype)
 			) {
 				frappe.model.set_value(row.doctype, row.name, "reference_doctype", null);
-				frappe.msgprint(__("Row #{0}: Reference Document Type must be one of Sales Order, Sales Invoice, Journal Entry or Dunning", [row.idx]));
+				frappe.msgprint(__("Row #{0}: Reference Document Type must be one of Sales Order, Sales Invoice, Journal Entry, Dunning or Payment Entry", [row.idx]));
 				return false;
 			}
 
 			if(frm.doc.party_type=="Supplier" &&
-				!in_list(["Purchase Order", "Purchase Invoice", "Journal Entry"], row.reference_doctype)
+				!in_list(["Purchase Order", "Purchase Invoice", "Journal Entry", "Payment Entry"], row.reference_doctype)
 			) {
 				frappe.model.set_value(row.doctype, row.name, "against_voucher_type", null);
-				frappe.msgprint(__("Row #{0}: Reference Document Type must be one of Purchase Order, Purchase Invoice or Journal Entry", [row.idx]));
+				frappe.msgprint(__("Row #{0}: Reference Document Type must be one of Purchase Order, Purchase Invoice, Journal Entry or Payment Entry", [row.idx]));
 				return false;
 			}
 		}
