@@ -107,9 +107,9 @@ frappe.ui.form.on('Payment Entry', {
 
 		frm.set_query("reference_doctype", "references", function() {
 			if (frm.doc.party_type == "Customer") {
-				var doctypes = ["Sales Order", "Sales Invoice", "Journal Entry", "Dunning"];
+				var doctypes = ["Sales Order", "Sales Invoice", "Journal Entry", "Dunning", "Payment Entry"];
 			} else if (frm.doc.party_type == "Supplier") {
-				var doctypes = ["Purchase Order", "Purchase Invoice", "Journal Entry"];
+				var doctypes = ["Purchase Order", "Purchase Invoice", "Journal Entry", "Payment Entry"];
 			} else {
 				var doctypes = ["Journal Entry"];
 			}
@@ -139,6 +139,9 @@ frappe.ui.form.on('Payment Entry', {
 
 			if (in_list(party_type_doctypes, child.reference_doctype)) {
 				filters[doc.party_type.toLowerCase()] = doc.party;
+			} else if (child.reference_doctype === "Payment Entry") {
+				filters["party_type"] = doc.party_type;
+				filters["party"] = doc.party;
 			}
 
 			return {
@@ -846,6 +849,15 @@ frappe.ui.form.on('Payment Entry', {
 			total_negative_outstanding = flt(total_negative_outstanding, precision("outstanding_amount"))
 			if(paid_amount > total_negative_outstanding) {
 				if(total_negative_outstanding == 0) {
+					// On-account Receive-from-Supplier with no references is allowed
+					// (relaxed server-side); nothing to allocate, so skip the warning.
+					if (
+						frm.doc.payment_type == "Receive" &&
+						frm.doc.party_type == "Supplier" &&
+						!(frm.doc.references || []).length
+					) {
+						return false;
+					}
 					frappe.msgprint(
 						__("Cannot {0} {1} {2} without any negative outstanding invoice", [frm.doc.payment_type,
 							(frm.doc.party_type=="Customer" ? "to" : "from"), frm.doc.party_type])
@@ -977,18 +989,18 @@ frappe.ui.form.on('Payment Entry', {
 			}
 
 			if(frm.doc.party_type=="Customer" &&
-				!in_list(["Sales Order", "Sales Invoice", "Journal Entry", "Dunning"], row.reference_doctype)
+				!in_list(["Sales Order", "Sales Invoice", "Journal Entry", "Dunning", "Payment Entry"], row.reference_doctype)
 			) {
 				frappe.model.set_value(row.doctype, row.name, "reference_doctype", null);
-				frappe.msgprint(__("Row #{0}: Reference Document Type must be one of Sales Order, Sales Invoice, Journal Entry or Dunning", [row.idx]));
+				frappe.msgprint(__("Row #{0}: Reference Document Type must be one of Sales Order, Sales Invoice, Journal Entry, Dunning or Payment Entry", [row.idx]));
 				return false;
 			}
 
 			if(frm.doc.party_type=="Supplier" &&
-				!in_list(["Purchase Order", "Purchase Invoice", "Journal Entry"], row.reference_doctype)
+				!in_list(["Purchase Order", "Purchase Invoice", "Journal Entry", "Payment Entry"], row.reference_doctype)
 			) {
 				frappe.model.set_value(row.doctype, row.name, "against_voucher_type", null);
-				frappe.msgprint(__("Row #{0}: Reference Document Type must be one of Purchase Order, Purchase Invoice or Journal Entry", [row.idx]));
+				frappe.msgprint(__("Row #{0}: Reference Document Type must be one of Purchase Order, Purchase Invoice, Journal Entry or Payment Entry", [row.idx]));
 				return false;
 			}
 		}
@@ -1453,6 +1465,25 @@ frappe.ui.form.on('Payment Entry Deduction', {
 	}
 })
 frappe.ui.form.on('Payment Entry', {
+	before_submit: function(frm) {
+		if (
+			frm.doc.payment_type === "Receive" &&
+			frm.doc.party_type === "Supplier" &&
+			!(frm.doc.references || []).some((r) => flt(r.outstanding_amount) < 0)
+		) {
+			return new Promise((resolve, reject) => {
+				frappe.confirm(
+					__(
+						"You are recording money <b>received from Supplier {0}</b>: the bank account will increase and the amount owed to this supplier will <b>increase</b> by {1}.<br><br>If you meant to <b>pay</b> this supplier, click No and change Payment Type to Pay.",
+						[frm.doc.party_name || frm.doc.party, format_currency(frm.doc.paid_amount, frm.doc.paid_from_account_currency)]
+					),
+					() => resolve(),
+					() => reject()
+				);
+			});
+		}
+	},
+
 	cost_center: function(frm){
 		if (frm.doc.posting_date && (frm.doc.paid_from||frm.doc.paid_to)) {
 			return frappe.call({

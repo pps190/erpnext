@@ -1331,6 +1331,93 @@ class TestPaymentEntry(FrappeTestCase):
 		expected_out_str = json.dumps(sorted(expected_pl_entries, key=json.dumps))
 		self.assertEqual(out_str, expected_out_str)
 
+	def test_on_account_receive_from_supplier(self):
+		"""Receive+Supplier with no references posts bank debit / payable credit."""
+		pe = create_payment_entry(
+			payment_type="Receive",
+			party_type="Supplier",
+			party="_Test Supplier",
+			paid_from="Creditors - _TC",
+			paid_to="_Test Bank - _TC",
+			paid_amount=100,
+			save=True,
+			submit=True,
+		)
+
+		expected_gle = dict(
+			(d[0], d)
+			for d in [["Creditors - _TC", 0, 100, None], ["_Test Bank - _TC", 100, 0, None]]
+		)
+		self.validate_gl_entries(pe.name, expected_gle)
+
+		self.assertPLEntries(pe, [{"amount": 100.0, "against_voucher_no": pe.name}])
+		pe.cancel()
+
+	def test_pay_against_on_account_receive_pe(self):
+		"""A Pay PE can reference a positive-residual Payment Entry and net it out."""
+		receive_pe = create_payment_entry(
+			payment_type="Receive",
+			party_type="Supplier",
+			party="_Test Supplier",
+			paid_from="Creditors - _TC",
+			paid_to="_Test Bank - _TC",
+			paid_amount=100,
+			save=True,
+			submit=True,
+		)
+
+		pay_pe = create_payment_entry(paid_amount=100)
+		pay_pe.append(
+			"references",
+			{
+				"reference_doctype": "Payment Entry",
+				"reference_name": receive_pe.name,
+				"allocated_amount": 100,
+			},
+		)
+		pay_pe.save()
+		pay_pe.submit()
+
+		self.assertPLEntries(pay_pe, [{"amount": -100.0, "against_voucher_no": receive_pe.name}])
+		residual = frappe.db.get_value(
+			"Payment Ledger Entry",
+			{"against_voucher_no": receive_pe.name, "delinked": 0},
+			"sum(amount)",
+		)
+		self.assertEqual(flt(residual), 0.0)
+
+		pay_pe.cancel()
+		receive_pe.cancel()
+
+	def test_pe_reference_guards(self):
+		"""Self-references and advance (negative-residual) PE references are blocked."""
+		# advance: unallocated Pay -> negative net in the payment ledger
+		advance_pe = create_payment_entry(paid_amount=50, save=True, submit=True)
+
+		pay_pe = create_payment_entry(paid_amount=10)
+		pay_pe.append(
+			"references",
+			{
+				"reference_doctype": "Payment Entry",
+				"reference_name": advance_pe.name,
+				"allocated_amount": -10,
+			},
+		)
+		self.assertRaises(frappe.ValidationError, pay_pe.save)
+
+		self_pe = create_payment_entry(paid_amount=10, save=True)
+		self_pe.append(
+			"references",
+			{
+				"reference_doctype": "Payment Entry",
+				"reference_name": self_pe.name,
+				"allocated_amount": 10,
+			},
+		)
+		self.assertRaises(frappe.ValidationError, self_pe.save)
+
+		advance_pe.cancel()
+
 
 def create_payment_entry(**args):
 	payment_entry = frappe.new_doc("Payment Entry")
