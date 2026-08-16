@@ -463,8 +463,12 @@ class PurchaseInvoice(BuyingController):
 					"second_join_field": "purchase_order_item",
 					"percent_join_field": "purchase_order",
 					"overflow_type": "receipt",
+					# PPS (pps190/next#605): core deposit rows (is_core=1) never count
+					# toward the order's qty rollup.
 					"extra_cond": """ and exists(select name from `tabPurchase Invoice`
-					where name=`tabPurchase Invoice Item`.parent and update_stock = 1)""",
+					where name=`tabPurchase Invoice Item`.parent and update_stock = 1)
+					and ifnull(`tabPurchase Invoice Item`.is_core, 0) = 0""",
+					"second_source_extra_cond": """ and ifnull(`tabPurchase Receipt Item`.is_core, 0) = 0""",
 				}
 			)
 			if cint(self.is_return):
@@ -480,7 +484,9 @@ class PurchaseInvoice(BuyingController):
 						"second_join_field": "purchase_order_item",
 						"overflow_type": "receipt",
 						"extra_cond": """ and exists (select name from `tabPurchase Invoice`
-						where name=`tabPurchase Invoice Item`.parent and update_stock=1 and is_return=1)""",
+						where name=`tabPurchase Invoice Item`.parent and update_stock=1 and is_return=1)
+						and ifnull(`tabPurchase Invoice Item`.is_core, 0) = 0""",
+						"second_source_extra_cond": """ and ifnull(`tabPurchase Receipt Item`.is_core, 0) = 0""",
 					}
 				)
 

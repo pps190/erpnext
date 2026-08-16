@@ -24,6 +24,9 @@ class PurchaseReceipt(BuyingController):
 	def __init__(self, *args, **kwargs):
 		super(PurchaseReceipt, self).__init__(*args, **kwargs)
 		self.status_updater = [
+			# PPS (pps190/next#605): core deposit rows (is_core=1, custom field from the
+			# `next` app) carry purchase_order_item for structural uniformity but must
+			# never count toward the order's qty rollup — hence the is_core filters.
 			{
 				"target_dt": "Purchase Order Item",
 				"join_field": "purchase_order_item",
@@ -38,8 +41,10 @@ class PurchaseReceipt(BuyingController):
 				"second_join_field": "po_detail",
 				"percent_join_field": "purchase_order",
 				"overflow_type": "receipt",
+				"extra_cond": """ and ifnull(`tabPurchase Receipt Item`.is_core, 0) = 0""",
 				"second_source_extra_cond": """ and exists(select name from `tabPurchase Invoice`
-				where name=`tabPurchase Invoice Item`.parent and update_stock = 1)""",
+				where name=`tabPurchase Invoice Item`.parent and update_stock = 1)
+				and ifnull(`tabPurchase Invoice Item`.is_core, 0) = 0""",
 			},
 			{
 				"source_dt": "Purchase Receipt Item",
@@ -89,9 +94,11 @@ class PurchaseReceipt(BuyingController):
 						"second_source_field": "-1 * qty",
 						"second_join_field": "po_detail",
 						"extra_cond": """ and exists (select name from `tabPurchase Receipt`
-						where name=`tabPurchase Receipt Item`.parent and is_return=1)""",
+						where name=`tabPurchase Receipt Item`.parent and is_return=1)
+						and ifnull(`tabPurchase Receipt Item`.is_core, 0) = 0""",
 						"second_source_extra_cond": """ and exists (select name from `tabPurchase Invoice`
-						where name=`tabPurchase Invoice Item`.parent and is_return=1 and update_stock=1)""",
+						where name=`tabPurchase Invoice Item`.parent and is_return=1 and update_stock=1)
+						and ifnull(`tabPurchase Invoice Item`.is_core, 0) = 0""",
 					},
 					{
 						"source_dt": "Purchase Receipt Item",

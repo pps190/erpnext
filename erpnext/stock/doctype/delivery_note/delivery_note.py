@@ -22,6 +22,9 @@ class DeliveryNote(SellingController):
 	def __init__(self, *args, **kwargs):
 		super(DeliveryNote, self).__init__(*args, **kwargs)
 		self.status_updater = [
+			# PPS (pps190/next#605): core deposit rows (is_core=1, custom field from the
+			# `next` app) carry so_detail for billing but must never count toward the
+			# order's qty rollup — hence the is_core filters on every qty source below.
 			{
 				"source_dt": "Delivery Note Item",
 				"target_dt": "Sales Order Item",
@@ -38,8 +41,10 @@ class DeliveryNote(SellingController):
 				"second_source_field": "qty",
 				"second_join_field": "so_detail",
 				"overflow_type": "delivery",
+				"extra_cond": """ and ifnull(`tabDelivery Note Item`.is_core, 0) = 0""",
 				"second_source_extra_cond": """ and exists(select name from `tabSales Invoice`
-				where name=`tabSales Invoice Item`.parent and update_stock = 1)""",
+				where name=`tabSales Invoice Item`.parent and update_stock = 1)
+				and ifnull(`tabSales Invoice Item`.is_core, 0) = 0""",
 			},
 			{
 				"source_dt": "Delivery Note Item",
@@ -68,9 +73,11 @@ class DeliveryNote(SellingController):
 						"second_source_field": "-1 * qty",
 						"second_join_field": "so_detail",
 						"extra_cond": """ and exists (select name from `tabDelivery Note`
-					where name=`tabDelivery Note Item`.parent and is_return=1)""",
+					where name=`tabDelivery Note Item`.parent and is_return=1)
+					and ifnull(`tabDelivery Note Item`.is_core, 0) = 0""",
 						"second_source_extra_cond": """ and exists (select name from `tabSales Invoice`
-					where name=`tabSales Invoice Item`.parent and is_return=1 and update_stock=1)""",
+					where name=`tabSales Invoice Item`.parent and is_return=1 and update_stock=1)
+					and ifnull(`tabSales Invoice Item`.is_core, 0) = 0""",
 					},
 					{
 						"source_dt": "Delivery Note Item",

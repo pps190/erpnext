@@ -102,6 +102,11 @@ class TransactionBase(StatusUpdater):
 			reference_names = [d.get(ref_link_field) for d in self.get("items") if d.get(ref_link_field)]
 			reference_details = self.get_reference_details(reference_names, ref_dt + " Item")
 			for d in self.get("items"):
+				# PPS (pps190/next#605): core deposit rows reference the order's
+				# part line for billing, but their rate is the deposit rate — by
+				# design different from the part line's (which folds the core in).
+				if d.get("is_core"):
+					continue
 				if d.get(ref_link_field):
 					ref_rate = reference_details.get(d.get(ref_link_field))
 
