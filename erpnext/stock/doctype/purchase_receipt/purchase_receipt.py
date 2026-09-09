@@ -6,6 +6,7 @@ import frappe
 from frappe import _, throw
 from frappe.desk.notifications import clear_doctype_notifications
 from frappe.model.mapper import get_mapped_doc
+from frappe.model.meta import get_field_precision
 from frappe.query_builder.functions import CombineDatetime
 from frappe.utils import cint, flt, getdate, nowdate
 from pypika import functions as fn
@@ -458,7 +459,17 @@ class PurchaseReceipt(BuyingController):
 							credit=credit_amount,
 							remarks=remarks,
 							against_account=stock_asset_account_name,
-							credit_in_account_currency=flt(amount["amount"]),
+							# PPS (pps190/next#721): round to the account's own currency
+							# precision. This column used to receive the raw float while
+							# `credit` was rounded on write, so the two disagreed on every
+							# row even at exchange rate 1.
+							credit_in_account_currency=flt(
+								amount["amount"],
+								get_field_precision(
+									frappe.get_meta("GL Entry").get_field("credit_in_account_currency"),
+									currency=account_currency,
+								),
+							),
 							account_currency=account_currency,
 							project=item.project,
 							item=item,
@@ -1164,46 +1175,87 @@ def get_item_account_wise_additional_cost(purchase_document):
 	for lcv in landed_cost_vouchers:
 		landed_cost_voucher_doc = frappe.get_doc("Landed Cost Voucher", lcv.parent)
 
-		# Use amount field for total item cost for manually cost distributed LCVs
-		if landed_cost_voucher_doc.distribute_charges_based_on == "Distribute Manually":
-			based_on_field = "amount"
-		else:
-			based_on_field = frappe.scrub(landed_cost_voucher_doc.distribute_charges_based_on)
-
-		total_item_cost = 0
-
 		for item in landed_cost_voucher_doc.items:
-			total_item_cost += item.get(based_on_field)
+			if item.receipt_document != purchase_document:
+				continue
 
-		for item in landed_cost_voucher_doc.items:
-			if item.receipt_document == purchase_document:
-				for account in landed_cost_voucher_doc.taxes:
-					item_account_wise_cost.setdefault((item.item_code, item.purchase_receipt_item), {})
-					item_account_wise_cost[(item.item_code, item.purchase_receipt_item)].setdefault(
-						account.expense_account, {"amount": 0.0, "base_amount": 0.0}
-					)
+			# PPS (pps190/next#721): post the *reconciled* share, not a fresh unrounded
+			# one. `applicable_charges` is what the LCV rounded to field precision and
+			# then balanced (the last row absorbs the remainder), so it sums exactly to
+			# `total_taxes_and_charges` and is what drives stock valuation. Recomputing
+			# `account.amount * based_on / total_item_cost` here re-derived the share as a
+			# raw float, so the GL never saw that remainder and the landed-cost clearing
+			# account was left holding cents that only a manual write-off could clear.
+			#
+			# Reading the reconciled figure also fixes "Distribute Manually": the old
+			# code apportioned by the item's `amount` even in that mode, so the GL
+			# ignored the split the user had actually typed.
+			for account, amount, base_amount in split_applicable_charges_by_account(
+				landed_cost_voucher_doc, item
+			):
+				item_account_wise_cost.setdefault((item.item_code, item.purchase_receipt_item), {})
+				item_account_wise_cost[(item.item_code, item.purchase_receipt_item)].setdefault(
+					account, {"amount": 0.0, "base_amount": 0.0}
+				)
 
-					if total_item_cost > 0:
-						item_account_wise_cost[(item.item_code, item.purchase_receipt_item)][
-							account.expense_account
-						]["amount"] += (
-							account.amount * item.get(based_on_field) / total_item_cost
-						)
-
-						item_account_wise_cost[(item.item_code, item.purchase_receipt_item)][
-							account.expense_account
-						]["base_amount"] += (
-							account.base_amount * item.get(based_on_field) / total_item_cost
-						)
-					else:
-						item_account_wise_cost[(item.item_code, item.purchase_receipt_item)][
-							account.expense_account
-						]["amount"] += item.applicable_charges
-						item_account_wise_cost[(item.item_code, item.purchase_receipt_item)][
-							account.expense_account
-						]["base_amount"] += item.applicable_charges
+				item_account_wise_cost[(item.item_code, item.purchase_receipt_item)][account][
+					"amount"
+				] += amount
+				item_account_wise_cost[(item.item_code, item.purchase_receipt_item)][account][
+					"base_amount"
+				] += base_amount
 
 	return item_account_wise_cost
+
+
+def split_applicable_charges_by_account(landed_cost_voucher_doc, item):
+	"""Split one Landed Cost Item's reconciled `applicable_charges` across the voucher's
+	charge accounts, preserving the total to the cent.
+
+	`applicable_charges` is a single company-currency figure covering *all* charge rows,
+	so when a voucher carries more than one charge account the figure has to be
+	apportioned. Each slice is rounded to currency precision and the remainder is pushed
+	onto the last account — the same last-row-absorbs-the-difference rule the voucher
+	itself applies across items. The slices therefore re-add to `applicable_charges`
+	exactly, and summed over items to `total_taxes_and_charges`.
+
+	Yields `(expense_account, amount, base_amount)`. `amount` is in the charge account's
+	currency, `base_amount` in company currency.
+	"""
+	precision = get_field_precision(
+		frappe.get_meta("Landed Cost Item").get_field("applicable_charges"),
+		currency=erpnext.get_company_currency(landed_cost_voucher_doc.company),
+	)
+
+	applicable_charges = flt(item.applicable_charges, precision)
+	total_taxes_and_charges = flt(landed_cost_voucher_doc.total_taxes_and_charges)
+	taxes = landed_cost_voucher_doc.taxes
+
+	rows = []
+	allocated = 0.0
+
+	for idx, account in enumerate(taxes):
+		if idx == len(taxes) - 1:
+			# Last row absorbs the rounding remainder.
+			base_amount = flt(applicable_charges - allocated, precision)
+		elif total_taxes_and_charges:
+			base_amount = flt(
+				applicable_charges * flt(account.base_amount) / total_taxes_and_charges, precision
+			)
+		else:
+			base_amount = 0.0
+
+		allocated = flt(allocated + base_amount, precision)
+
+		# Convert back to the charge account's own currency. `exchange_rate` is forced to
+		# 1 whenever the account currency matches the company currency, so this is an
+		# identity for the single-currency case rather than a second source of drift.
+		exchange_rate = flt(account.exchange_rate) or 1
+		amount = flt(base_amount / exchange_rate, precision)
+
+		rows.append((account.expense_account, amount, base_amount))
+
+	return rows
 
 
 @erpnext.allow_regional
