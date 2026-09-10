@@ -410,6 +410,159 @@ class TestLandedCostVoucher(FrappeTestCase):
 		self.assertEqual(flt(lcv.items[0].applicable_charges, 2), 41.07)
 		self.assertEqual(flt(lcv.items[2].applicable_charges, 2), 41.08)
 
+	def test_gl_entries_match_reconciled_applicable_charges(self):
+		"""PPS (pps190/next#721): the charges credited to the clearing account must add up
+		to the charges the voucher reconciled, to the cent.
+
+		The voucher rounds each item's share and pushes the remainder onto the last row,
+		so 10.00 over three equal receipts becomes 3.33 / 3.33 / 3.34. The GL used to
+		re-derive each share as a raw float instead of reading that reconciled figure,
+		posting 3.33 three times and stranding a cent in the clearing account.
+
+		Three *separate* receipts matter: a single receipt merges its same-account rows
+		before writing the GL, which hides the per-slice rounding.
+		"""
+		prs = [self._make_single_item_receipt(rate=1, qty=1) for _ in range(3)]
+
+		lcv = self._make_lcv_over_receipts(prs, charges=10)
+
+		# The voucher itself reconciles — the last row absorbs the remainder.
+		self.assertEqual([flt(d.applicable_charges, 2) for d in lcv.items], [3.33, 3.33, 3.34])
+
+		rows = self._get_charge_gl_entries(prs, "Expenses Included In Valuation - TCP1")
+		self.assertEqual(len(rows), 3)
+
+		# The clearing account is credited the whole charge — no stranded cent.
+		self.assertEqual(flt(sum(flt(d.credit) for d in rows), 2), 10.00)
+		self.assertEqual(sorted(flt(d.credit, 2) for d in rows), [3.33, 3.33, 3.34])
+
+		# The account-currency column is rounded too, so it agrees with `credit` row by
+		# row. It used to receive the raw 3.333333333 while `credit` was rounded on write.
+		for gle in rows:
+			self.assertEqual(flt(gle.credit, 2), flt(gle.credit_in_account_currency, 2))
+			self.assertEqual(
+				flt(gle.credit_in_account_currency), flt(gle.credit_in_account_currency, 2)
+			)
+
+	def test_gl_entries_split_across_multiple_charge_accounts(self):
+		"""With more than one charge row the reconciled share is apportioned between the
+		accounts; each posted amount is still rounded, and the accounts together still
+		carry the full charge."""
+		insurance = create_account(
+			account_name="_Test LCV Insurance 721",
+			parent_account="Duties and Taxes - TCP1",
+			company="_Test Company with perpetual inventory",
+		)
+
+		prs = [self._make_single_item_receipt(rate=1, qty=1) for _ in range(3)]
+
+		lcv = self._make_lcv_over_receipts(prs, charges=10, do_not_submit=True)
+		lcv.append(
+			"taxes",
+			{"description": "Insurance Charges", "expense_account": insurance, "amount": 3.22},
+		)
+		lcv.save()
+		lcv.submit()
+
+		self.assertEqual(flt(lcv.total_taxes_and_charges, 2), 13.22)
+
+		rows = self._get_charge_gl_entries(
+			prs, ["Expenses Included In Valuation - TCP1", insurance]
+		)
+		self.assertTrue(rows)
+
+		# Nothing posted as a raw float.
+		for gle in rows:
+			self.assertEqual(flt(gle.credit), flt(gle.credit, 2))
+			self.assertEqual(
+				flt(gle.credit_in_account_currency), flt(gle.credit_in_account_currency, 2)
+			)
+
+		# Both charge accounts together carry the whole charge.
+		self.assertEqual(flt(sum(flt(d.credit) for d in rows), 2), 13.22)
+
+	def test_gl_entries_follow_manually_distributed_charges(self):
+		"""Under "Distribute Manually" the GL must credit the split the user typed.
+
+		The old GL path apportioned by each item's `amount` regardless of the mode, so a
+		deliberately uneven manual split was posted evenly — the voucher and the ledger
+		disagreed even though nothing needed rounding.
+		"""
+		prs = [self._make_single_item_receipt(rate=100, qty=1) for _ in range(2)]
+
+		lcv = self._make_lcv_over_receipts(
+			prs, charges=100, distribute_charges_based_on="Distribute Manually", do_not_submit=True
+		)
+		lcv.get_items_from_purchase_receipts()
+		lcv.items[0].applicable_charges = 90
+		lcv.items[1].applicable_charges = 10
+		lcv.save()
+		lcv.submit()
+
+		rows = self._get_charge_gl_entries(prs, "Expenses Included In Valuation - TCP1")
+		self.assertEqual(sorted(flt(d.credit, 2) for d in rows), [10.00, 90.00])
+		self.assertEqual(flt(sum(flt(d.credit) for d in rows), 2), 100.00)
+
+	def _make_single_item_receipt(self, rate, qty):
+		pr = make_purchase_receipt(
+			company="_Test Company with perpetual inventory",
+			warehouse="Stores - TCP1",
+			supplier_warehouse="Work In Progress - TCP1",
+			qty=qty,
+			rate=rate,
+			do_not_save=True,
+		)
+		pr.items[0].cost_center = "Main - TCP1"
+		pr.submit()
+		return pr
+
+	def _make_lcv_over_receipts(
+		self, prs, charges, do_not_submit=False, distribute_charges_based_on="Amount"
+	):
+		lcv = frappe.new_doc("Landed Cost Voucher")
+		lcv.company = prs[0].company
+		lcv.distribute_charges_based_on = distribute_charges_based_on
+
+		for pr in prs:
+			lcv.append(
+				"purchase_receipts",
+				{
+					"receipt_document_type": "Purchase Receipt",
+					"receipt_document": pr.name,
+					"supplier": pr.supplier,
+					"posting_date": pr.posting_date,
+					"grand_total": pr.base_grand_total,
+				},
+			)
+
+		lcv.append(
+			"taxes",
+			{
+				"description": "Insurance Charges",
+				"expense_account": "Expenses Included In Valuation - TCP1",
+				"amount": charges,
+			},
+		)
+
+		lcv.insert()
+		if not do_not_submit:
+			lcv.submit()
+		return lcv
+
+	def _get_charge_gl_entries(self, prs, accounts):
+		if isinstance(accounts, str):
+			accounts = [accounts]
+		return frappe.get_all(
+			"GL Entry",
+			fields=["voucher_no", "account", "credit", "credit_in_account_currency"],
+			filters={
+				"voucher_type": "Purchase Receipt",
+				"voucher_no": ("in", [pr.name for pr in prs]),
+				"account": ("in", accounts),
+				"is_cancelled": 0,
+			},
+		)
+
 	def test_multiple_landed_cost_voucher_against_pr(self):
 		pr = make_purchase_receipt(
 			company="_Test Company with perpetual inventory",
