@@ -126,6 +126,7 @@ erpnext.accounts.PaymentReconciliationController = class PaymentReconciliationCo
 	party() {
 		this.frm.set_value('receivable_payable_account', '');
 		this.frm.trigger("clear_child_tables");
+		this.frm.trigger("set_party_name");
 
 		if (!this.frm.doc.receivable_payable_account && this.frm.doc.party_type && this.frm.doc.party) {
 			return frappe.call({
@@ -144,6 +145,34 @@ erpnext.accounts.PaymentReconciliationController = class PaymentReconciliationCo
 				}
 			});
 		}
+	}
+
+	set_party_name() {
+		// PPS (pps190/next#768): internal companies keep one party per settlement
+		// currency under a single legal name, so show the billing currency too.
+		if (!this.frm.doc.party_type || !this.frm.doc.party) {
+			this.frm.set_value("party_name", "");
+			return;
+		}
+
+		const name_field = {
+			Customer: "customer_name",
+			Supplier: "supplier_name",
+		}[this.frm.doc.party_type];
+
+		if (!name_field) {
+			this.frm.set_value("party_name", "");
+			return;
+		}
+
+		frappe.db.get_value(this.frm.doc.party_type, this.frm.doc.party,
+			[name_field, "default_currency"], (r) => {
+				if (!r) return;
+				const party_name = r[name_field] || "";
+				const currency = r.default_currency || "";
+				this.frm.set_value("party_name",
+					currency ? `${party_name} · ${currency}` : party_name);
+			});
 	}
 
 	receivable_payable_account() {

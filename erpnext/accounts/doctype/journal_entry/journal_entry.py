@@ -16,7 +16,7 @@ from erpnext.accounts.doctype.invoice_discounting.invoice_discounting import (
 from erpnext.accounts.doctype.tax_withholding_category.tax_withholding_category import (
 	get_party_tax_withholding_details,
 )
-from erpnext.accounts.party import get_party_account
+from erpnext.accounts.party import get_party_account, get_party_billing_currency
 from erpnext.accounts.utils import (
 	cancel_exchange_gain_loss_journal,
 	get_account_currency,
@@ -1054,6 +1054,7 @@ class JournalEntry(AccountsController):
 	def set_account_and_party_balance(self):
 		account_balance = {}
 		party_balance = {}
+		party_currency = {}
 		for d in self.get("accounts"):
 			if d.account not in account_balance:
 				account_balance[d.account] = get_balance_on(account=d.account, date=self.posting_date)
@@ -1063,8 +1064,16 @@ class JournalEntry(AccountsController):
 					party_type=d.party_type, party=d.party, date=self.posting_date, company=self.company
 				)
 
+			# PPS (pps190/next#768): internal companies keep one party per settlement
+			# currency under a single legal name, so surface the billing currency.
+			if (d.party_type, d.party) not in party_currency:
+				party_currency[(d.party_type, d.party)] = get_party_billing_currency(
+					d.party_type, d.party
+				)
+
 			d.account_balance = account_balance[d.account]
 			d.party_balance = party_balance[(d.party_type, d.party)]
+			d.party_billing_currency = party_currency[(d.party_type, d.party)]
 
 
 @frappe.whitelist()

@@ -518,7 +518,7 @@
   }
  ],
  "quick_entry": 1,
- "search_fields": "supplier_name, supplier_group",
+ "search_fields": "supplier_name, default_currency, supplier_group",
  "show_name_in_global_search": 1,
  "sort_field": "modified",
  "sort_order": "ASC",

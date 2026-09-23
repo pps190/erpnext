@@ -126,12 +126,14 @@ def supplier_query(doctype, txt, searchfield, start, page_len, filters, as_dict=
 		fields.append("supplier_name")
 
 	fields = get_fields(doctype, fields)
+	searchfields = frappe.get_meta(doctype).get_search_fields()
+	searchfields = " or ".join(field + " like %(txt)s" for field in searchfields)
 
 	return frappe.db.sql(
 		"""select {field} from `tabSupplier`
 		where docstatus < 2
 			and ({key} like %(txt)s
-			or supplier_name like %(txt)s) and disabled=0
+			or {scond}) and disabled=0
 			and (on_hold = 0 or (on_hold = 1 and CURRENT_DATE > release_date))
 			{mcond}
 		order by
@@ -140,7 +142,12 @@ def supplier_query(doctype, txt, searchfield, start, page_len, filters, as_dict=
 			idx desc,
 			name, supplier_name
 		limit %(page_len)s offset %(start)s""".format(
-			**{"field": ", ".join(fields), "key": searchfield, "mcond": get_match_cond(doctype)}
+			**{
+				"field": ", ".join(fields),
+				"key": searchfield,
+				"scond": searchfields,
+				"mcond": get_match_cond(doctype),
+			}
 		),
 		{"txt": "%%%s%%" % txt, "_txt": txt.replace("%", ""), "start": start, "page_len": page_len},
 		as_dict=as_dict,

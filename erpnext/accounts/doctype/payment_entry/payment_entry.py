@@ -312,6 +312,13 @@ class PaymentEntry(AccountsController):
 			else:
 				self.party_name = frappe.db.get_value(self.party_type, self.party, "name")
 
+			# PPS (pps190/next#768): party_name stays the bare legal name — the
+			# billing currency is carried separately so it never re-enters the name.
+			if frappe.db.has_column(self.party_type, "default_currency"):
+				self.party_billing_currency = frappe.db.get_value(
+					self.party_type, self.party, "default_currency"
+				)
+
 		if self.party:
 			if not self.party_balance:
 				self.party_balance = get_balance_on(

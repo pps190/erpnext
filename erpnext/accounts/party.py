@@ -1015,3 +1015,42 @@ def render_address(address, check_permissions=True):
 		from frappe.contacts.doctype.address.address import get_address_display as _render
 
 	return frappe.call(_render, address, check_permissions=check_permissions)
+
+
+def get_party_billing_currency(party_type, party):
+	"""The party's own settlement currency, or an empty string.
+
+	PPS (pps190/next#768): internal companies keep one Supplier/Customer per
+	settlement currency under a single legal name, so the name alone no longer
+	identifies the record. Party types without the column (Employee,
+	Shareholder, Sales Partner) simply return "".
+	"""
+	if not party_type or not party:
+		return ""
+
+	if not frappe.db.has_column(party_type, "default_currency"):
+		return ""
+
+	return frappe.get_cached_value(party_type, party, "default_currency") or ""
+
+
+def get_party_name_with_currency(party_type, party):
+	"""Party display name suffixed with its billing currency.
+
+	Presentation only — never write this back onto a stored *_name field
+	(see pps190/next#768). The currency is always appended: party names no
+	longer carry a currency suffix of their own.
+	"""
+	if not party_type or not party:
+		return ""
+
+	name_field = {"Customer": "customer_name", "Supplier": "supplier_name"}.get(party_type)
+	if not name_field:
+		return ""
+
+	party_name = frappe.get_cached_value(party_type, party, name_field) or ""
+	if not party_name:
+		return ""
+
+	currency = get_party_billing_currency(party_type, party)
+	return f"{party_name} · {currency}" if currency else party_name
