@@ -13,6 +13,7 @@ from erpnext.accounts.doctype.accounting_dimension.accounting_dimension import (
 	get_accounting_dimensions,
 	get_dimension_with_children,
 )
+from erpnext.accounts.party import get_party_name_with_currency
 from erpnext.accounts.report.financial_statements import get_cost_centers_with_children
 from erpnext.accounts.report.utils import convert_to_presentation_currency, get_currency
 from erpnext.accounts.utils import get_account_currency
@@ -503,6 +504,7 @@ def get_result_as_list(data, filters):
 
 		d["account_currency"] = filters.account_currency
 		d["bill_no"] = inv_details.get(d.get("against_voucher"), "")
+		d["party_name"] = get_party_name_with_currency(d.get("party_type"), d.get("party"))
 
 	return data
 
@@ -580,6 +582,7 @@ def get_columns(filters):
 		{"label": _("Against Account"), "fieldname": "against", "width": 120},
 		{"label": _("Party Type"), "fieldname": "party_type", "width": 100},
 		{"label": _("Party"), "fieldname": "party", "width": 100},
+		{"label": _("Party Name"), "fieldname": "party_name", "width": 180},
 		{"label": _("Project"), "options": "Project", "fieldname": "project", "width": 100},
 	]
 

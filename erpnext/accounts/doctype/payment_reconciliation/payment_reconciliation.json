@@ -9,6 +9,7 @@
   "party_type",
   "column_break_4",
   "party",
+  "party_name",
   "receivable_payable_account",
   "col_break1",
   "from_invoice_date",
@@ -58,6 +59,14 @@
    "label": "Party",
    "options": "party_type",
    "reqd": 1
+  },
+  {
+   "fieldname": "party_name",
+   "fieldtype": "Data",
+   "label": "Party Name",
+   "read_only": 1,
+   "depends_on": "party",
+   "is_virtual": 0
   },
   {
    "depends_on": "eval:doc.company && doc.party",
