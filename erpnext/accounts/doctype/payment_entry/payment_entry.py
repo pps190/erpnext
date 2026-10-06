@@ -582,11 +582,17 @@ class PaymentEntry(AccountsController):
 							)
 						)
 
-	def update_payment_schedule(self, cancel=0):
+	def update_payment_schedule(self, cancel=0, references=None):
+		# references limits the update to those rows. Reconciliation passes the rows it
+		# added or is about to unlink, as the others are already booked.
+		if references is None:
+			references = self.get("references")
+
 		invoice_payment_amount_map = {}
 		invoice_paid_amount_map = {}
+		precision = frappe.get_precision("Payment Schedule", "outstanding")
 
-		for ref in self.get("references"):
+		for ref in references:
 			if ref.payment_term and ref.reference_name:
 				key = (ref.payment_term, ref.reference_name, ref.reference_doctype)
 				invoice_payment_amount_map.setdefault(key, 0.0)
@@ -595,7 +601,7 @@ class PaymentEntry(AccountsController):
 				if not invoice_paid_amount_map.get(key):
 					payment_schedule = frappe.get_all(
 						"Payment Schedule",
-						filters={"parent": ref.reference_name},
+						filters={"parent": ref.reference_name, "parenttype": ref.reference_doctype},
 						fields=[
 							"paid_amount",
 							"payment_amount",
@@ -613,7 +619,7 @@ class PaymentEntry(AccountsController):
 							continue
 
 						if term.discount_type == "Percentage":
-							invoice_paid_amount_map[invoice_key]["discounted_amt"] = ref.total_amount * (
+							invoice_paid_amount_map[invoice_key]["discounted_amt"] = flt(ref.total_amount) * (
 								term.discount / 100
 							)
 						else:
@@ -638,11 +644,18 @@ class PaymentEntry(AccountsController):
 						paid_amount = `paid_amount` - %s,
 						discounted_amount = `discounted_amount` - %s,
 						outstanding = `outstanding` + %s
-					WHERE parent = %s and payment_term = %s""",
-					(allocated_amount - discounted_amt, discounted_amt, allocated_amount, key[1], key[0]),
+					WHERE parent = %s and parenttype = %s and payment_term = %s""",
+					(
+						allocated_amount - discounted_amt,
+						discounted_amt,
+						allocated_amount,
+						key[1],
+						key[2],
+						key[0],
+					),
 				)
 			else:
-				if allocated_amount > outstanding:
+				if flt(allocated_amount, precision) > flt(outstanding, precision):
 					frappe.throw(
 						_("Row #{0}: Cannot allocate more than {1} against payment term {2}").format(
 							idx, fmt_money(outstanding), key[0]
@@ -657,8 +670,15 @@ class PaymentEntry(AccountsController):
 							paid_amount = `paid_amount` + %s,
 							discounted_amount = `discounted_amount` + %s,
 							outstanding = `outstanding` - %s
-						WHERE parent = %s and payment_term = %s""",
-						(allocated_amount - discounted_amt, discounted_amt, allocated_amount, key[1], key[0]),
+						WHERE parent = %s and parenttype = %s and payment_term = %s""",
+						(
+							allocated_amount - discounted_amt,
+							discounted_amt,
+							allocated_amount,
+							key[1],
+							key[2],
+							key[0],
+						),
 					)
 
 	def get_allocated_amount_in_transaction_currency(

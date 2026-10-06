@@ -10,7 +10,10 @@ from frappe.utils import add_days, flt, nowdate
 
 from erpnext import get_default_cost_center
 from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
-from erpnext.accounts.doctype.payment_entry.test_payment_entry import create_payment_entry
+from erpnext.accounts.doctype.payment_entry.test_payment_entry import (
+	create_payment_entry,
+	create_payment_term,
+)
 from erpnext.accounts.doctype.purchase_invoice.test_purchase_invoice import make_purchase_invoice
 from erpnext.accounts.doctype.sales_invoice.test_sales_invoice import create_sales_invoice
 from erpnext.accounts.party import get_party_account
@@ -1170,6 +1173,223 @@ class TestPaymentReconciliation(FrappeTestCase):
 
 		# Should not raise frappe.exceptions.ValidationError: Payment Entry has been modified after you pulled it. Please pull it again.
 		pr.reconcile()
+
+	def create_sales_invoice_with_payment_terms(self, foreign_currency=False):
+		"""Sales Invoice of 100 split into payment terms of 30 and 70"""
+		template_name = "_Test PR Payment Terms Template"
+		if not frappe.db.exists("Payment Terms Template", template_name):
+			create_payment_term("Basic Amount Receivable")
+			create_payment_term("Tax Receivable")
+			frappe.get_doc(
+				{
+					"doctype": "Payment Terms Template",
+					"template_name": template_name,
+					"allocate_payment_based_on_payment_terms": 1,
+					"terms": [
+						{
+							"payment_term": "Basic Amount Receivable",
+							"invoice_portion": 30,
+							"credit_days_based_on": "Day(s) after invoice date",
+							"credit_days": 1,
+						},
+						{
+							"payment_term": "Tax Receivable",
+							"invoice_portion": 70,
+							"credit_days_based_on": "Day(s) after invoice date",
+							"credit_days": 2,
+						},
+					],
+				}
+			).insert()
+
+		si = self.create_sales_invoice(qty=1, rate=100, do_not_save=True, do_not_submit=True)
+		si.payment_terms_template = template_name
+		if foreign_currency:
+			si.customer = self.customer3
+			si.currency = "EUR"
+			si.conversion_rate = 85
+			si.debit_to = self.debtors_eur
+		return si.save().submit()
+
+	def create_journal_entry_as_payment(self, amount):
+		je = self.create_journal_entry(self.bank, self.debit_to, amount)
+		je.accounts[1].party_type = "Customer"
+		je.accounts[1].party = self.customer
+		return je.save().submit()
+
+	def reconcile_with_payment_terms(self, invoice, payment, payment_terms=None):
+		"""Reconcile payment against the given payment terms of invoice. Defaults to all terms."""
+		pr = self.create_payment_reconciliation()
+		pr.party = invoice.customer
+		pr.receivable_payable_account = invoice.debit_to
+		pr.invoice_name = invoice.name
+		pr.payment_name = payment.name
+		pr.get_unreconciled_entries()
+
+		invoices = [x.as_dict() for x in pr.invoices if not payment_terms or x.payment_term in payment_terms]
+		payments = [x.as_dict() for x in pr.payments]
+		pr.allocate_entries(frappe._dict({"invoices": invoices, "payments": payments}))
+		for row in pr.allocation:
+			if row.difference_amount:
+				row.difference_account = "Exchange Gain/Loss - _PR"
+		pr.reconcile()
+		return pr
+
+	def assertPaymentSchedule(self, invoice, paid_amount, outstanding):
+		invoice.reload()
+		self.assertEqual([x.paid_amount for x in invoice.payment_schedule], paid_amount)
+		self.assertEqual([x.outstanding for x in invoice.payment_schedule], outstanding)
+
+	def assertUnreconciledTerms(self, invoice, expected):
+		pr = self.create_payment_reconciliation()
+		pr.invoice_name = invoice.name
+		pr.get_unreconciled_entries()
+		self.assertEqual([(x.payment_term, x.outstanding_amount) for x in pr.invoices], expected)
+
+	def unreconcile(self, payment):
+		unreconcile = frappe.get_doc(
+			{
+				"doctype": "Unreconcile Payment",
+				"company": self.company,
+				"voucher_type": payment.doctype,
+				"voucher_no": payment.name,
+			}
+		)
+		unreconcile.add_references()
+		unreconcile.save().submit()
+
+	def test_journal_against_invoice_with_payment_terms(self):
+		si = self.create_sales_invoice_with_payment_terms()
+		je = self.create_journal_entry_as_payment(100)
+
+		# the second term is allocated more than the first term has outstanding
+		pr = self.reconcile_with_payment_terms(si, je)
+		self.assertEqual(
+			[(x.payment_term, x.allocated_amount) for x in pr.allocation],
+			[("Basic Amount Receivable", 30), ("Tax Receivable", 70)],
+		)
+		self.assertPaymentSchedule(si, paid_amount=[30, 70], outstanding=[0, 0])
+
+		je.reload()
+		je.cancel()
+		self.assertPaymentSchedule(si, paid_amount=[0, 0], outstanding=[30, 70])
+
+	def test_journal_against_invoice_level_payment_terms(self):
+		# invoice is split by its own flag, without a Payment Terms Template
+		fieldname = "allocate_payment_based_on_payment_terms"
+		if not frappe.get_meta("Sales Invoice").has_field(fieldname):
+			self.skipTest("Sales Invoice has no field {0}".format(fieldname))
+
+		create_payment_term("Basic Amount Receivable")
+		create_payment_term("Tax Receivable")
+
+		si = self.create_sales_invoice(qty=1, rate=100, do_not_save=True, do_not_submit=True)
+		for idx, (payment_term, invoice_portion) in enumerate(
+			(("Basic Amount Receivable", 30), ("Tax Receivable", 70))
+		):
+			si.append(
+				"payment_schedule",
+				{
+					"payment_term": payment_term,
+					"due_date": add_days(si.posting_date, idx),
+					"invoice_portion": invoice_portion,
+				},
+			)
+		si.save().submit()
+		si.db_set(fieldname, 1)
+
+		je = self.create_journal_entry_as_payment(100)
+		pr = self.reconcile_with_payment_terms(si, je)
+		self.assertEqual(len(pr.allocation), 2)
+		self.assertPaymentSchedule(si, paid_amount=[30, 70], outstanding=[0, 0])
+
+		je.reload()
+		je.cancel()
+		self.assertPaymentSchedule(si, paid_amount=[0, 0], outstanding=[30, 70])
+
+	def test_payment_against_single_payment_term(self):
+		si = self.create_sales_invoice_with_payment_terms()
+		pe = self.create_payment_entry(amount=70).save().submit()
+
+		self.reconcile_with_payment_terms(si, pe, payment_terms=["Tax Receivable"])
+		self.assertPaymentSchedule(si, paid_amount=[0, 70], outstanding=[30, 0])
+
+		pe.reload()
+		self.assertEqual(
+			[(x.reference_name, x.payment_term, x.allocated_amount) for x in pe.references],
+			[(si.name, "Tax Receivable", 70)],
+		)
+
+		pe.cancel()
+		self.assertPaymentSchedule(si, paid_amount=[0, 0], outstanding=[30, 70])
+
+	def test_journal_against_single_payment_term(self):
+		si = self.create_sales_invoice_with_payment_terms()
+		je = self.create_journal_entry_as_payment(70)
+
+		self.reconcile_with_payment_terms(si, je, payment_terms=["Tax Receivable"])
+		self.assertPaymentSchedule(si, paid_amount=[0, 70], outstanding=[30, 0])
+
+		je.reload()
+		self.assertEqual(
+			[(x.payment_term, x.credit_in_account_currency) for x in je.accounts if x.reference_name == si.name],
+			[("Tax Receivable", 70)],
+		)
+
+		# only the first term is still open
+		self.assertUnreconciledTerms(si, [("Basic Amount Receivable", 30)])
+
+	def test_unreconcile_payment_against_payment_terms(self):
+		si = self.create_sales_invoice_with_payment_terms()
+		pe = self.create_payment_entry(amount=100).save().submit()
+
+		self.reconcile_with_payment_terms(si, pe)
+		self.assertPaymentSchedule(si, paid_amount=[30, 70], outstanding=[0, 0])
+
+		self.unreconcile(pe)
+		self.assertPaymentSchedule(si, paid_amount=[0, 0], outstanding=[30, 70])
+
+		self.assertUnreconciledTerms(si, [("Basic Amount Receivable", 30), ("Tax Receivable", 70)])
+
+	def test_unreconcile_journal_against_payment_terms(self):
+		si = self.create_sales_invoice_with_payment_terms()
+		je = self.create_journal_entry_as_payment(100)
+
+		self.reconcile_with_payment_terms(si, je)
+		self.assertPaymentSchedule(si, paid_amount=[30, 70], outstanding=[0, 0])
+
+		self.unreconcile(je)
+		self.assertPaymentSchedule(si, paid_amount=[0, 0], outstanding=[30, 70])
+
+		# cancelling afterwards must not reverse the payment terms a second time
+		je.reload()
+		je.cancel()
+		self.assertPaymentSchedule(si, paid_amount=[0, 0], outstanding=[30, 70])
+
+		self.assertUnreconciledTerms(si, [("Basic Amount Receivable", 30), ("Tax Receivable", 70)])
+
+	def test_journal_against_foreign_currency_invoice_with_payment_terms(self):
+		# Payment Schedule is in the invoice currency, which is also the party account currency
+		si = self.create_sales_invoice_with_payment_terms(foreign_currency=True)
+
+		je = self.create_journal_entry(self.bank, self.debtors_eur, 100)
+		je.multi_currency = 1
+		je.accounts[0].exchange_rate = 1
+		je.accounts[0].debit_in_account_currency = 8000
+		je.accounts[0].debit = 8000
+		je.accounts[1].party_type = "Customer"
+		je.accounts[1].party = self.customer3
+		je.accounts[1].exchange_rate = 80
+		je.accounts[1].credit_in_account_currency = 100
+		je.accounts[1].credit = 8000
+		je.save().submit()
+
+		self.reconcile_with_payment_terms(si, je)
+		self.assertPaymentSchedule(si, paid_amount=[30, 70], outstanding=[0, 0])
+
+		je.reload()
+		je.cancel()
+		self.assertPaymentSchedule(si, paid_amount=[0, 0], outstanding=[30, 70])
 
 
 def make_customer(customer_name, currency=None):

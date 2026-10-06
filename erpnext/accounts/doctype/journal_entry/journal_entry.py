@@ -23,6 +23,7 @@ from erpnext.accounts.utils import (
 	get_balance_on,
 	get_stock_accounts,
 	get_stock_and_account_balance,
+	update_payment_schedule_for_journal_entry_row,
 )
 from erpnext.controllers.accounts_controller import AccountsController
 
@@ -90,6 +91,11 @@ class JournalEntry(AccountsController):
 	def on_cancel(self):
 		# References for this Journal are removed on the `on_cancel` event in accounts_controller
 		super(JournalEntry, self).on_cancel()
+
+		# Reverse what reconciliation booked against a payment term
+		for row in self.get("accounts"):
+			update_payment_schedule_for_journal_entry_row(row, cancel=True)
+
 		self.ignore_linked_doctypes = (
 			"GL Entry",
 			"Stock Ledger Entry",

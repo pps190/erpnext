@@ -473,8 +473,9 @@ class ReceivablePayableReport(object):
 				self.allocate_closing_to_term(row, term, "credit_note")
 
 		# Whatever remains in row.paid / row.credit_note is orphan money (PLE-level
-		# payments never booked into Payment Schedule — JE reconciliations, PE refs
-		# with NULL payment_term) that the loop above could not place because its
+		# payments never booked into Payment Schedule — JE and PE references
+		# without a payment_term; reconciling against a term row books it) that the
+		# loop above could not place because its
 		# term already carries a Payment Schedule booking (`if not term.paid` skips
 		# it, since allocate_closing_to_term overwrites rather than adds). Fold that
 		# remainder into terms that still have outstanding, FIFO by due date.

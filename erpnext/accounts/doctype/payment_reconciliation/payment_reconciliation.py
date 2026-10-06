@@ -422,6 +422,7 @@ class PaymentReconciliation(Document):
 				"reference_row": pay.get("reference_row"),
 				"invoice_type": inv.get("invoice_type"),
 				"invoice_number": inv.get("invoice_number"),
+				"payment_term": inv.get("payment_term"),
 				"unreconciled_amount": pay.get("unreconciled_amount"),
 				"amount": pay.get("amount"),
 				"allocated_amount": allocated_amount,
@@ -492,6 +493,7 @@ class PaymentReconciliation(Document):
 				"voucher_detail_no": row.get("reference_row"),
 				"against_voucher_type": row.get("invoice_type"),
 				"against_voucher": row.get("invoice_number"),
+				"payment_term": row.get("payment_term"),
 				"account": self.receivable_payable_account,
 				"exchange_rate": row.get("exchange_rate"),
 				"party_type": self.party_type,
@@ -587,9 +589,10 @@ class PaymentReconciliation(Document):
 	def validate_allocation(self):
 		unreconciled_invoices = frappe._dict()
 
+		# An invoice split by payment terms has one row per term, each with its own outstanding
 		for inv in self.get("invoices"):
 			unreconciled_invoices.setdefault(inv.invoice_type, {}).setdefault(
-				inv.invoice_number, inv.outstanding_amount
+				(inv.invoice_number, inv.payment_term or None), inv.outstanding_amount
 			)
 
 		invoices_to_reconcile = []
@@ -604,7 +607,11 @@ class PaymentReconciliation(Document):
 						).format(row.idx, row.allocated_amount, row.amount)
 					)
 
-				invoice_outstanding = unreconciled_invoices.get(row.invoice_type, {}).get(row.invoice_number)
+				invoice_outstanding = flt(
+					unreconciled_invoices.get(row.invoice_type, {}).get(
+						(row.invoice_number, row.payment_term or None), 0
+					)
+				)
 				if flt(row.allocated_amount) - invoice_outstanding > 0.009:
 					frappe.throw(
 						_(

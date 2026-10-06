@@ -447,9 +447,11 @@ def get_orphan_payment_term_allocation(reference_doctype, reference_name, exclud
 	  has already booked them into Payment Schedule.paid_amount.
 	- Payment Entry References with NULL/empty payment_term: orphan (skipped by
 	  `update_payment_schedule()`).
-	- Journal Entry Account rows: orphan by construction (the table has no
-	  payment_term column). Includes auto-generated Debit Notes / Credit Notes,
-	  manual JEs, and Payment Reconciliation's dr_cr_note path.
+	- Journal Entry Account rows: orphan unless booked by reconciliation. Payment
+	  Reconciliation stamps payment_term on the row and books it through
+	  `update_payment_schedule_for_journal_entry_row()`. Rows without a payment_term stay
+	  orphan: auto-generated Debit Notes / Credit Notes, manual JEs, and Payment
+	  Reconciliation's dr_cr_note path.
 	- Future voucher types that write PLE: orphan unless they also book Payment
 	  Schedule themselves.
 
@@ -542,6 +544,66 @@ def distribute_orphan_payment_to_terms(
 	return remaining
 
 
+def update_payment_schedule_for_journal_entry_row(row, cancel=False):
+	"""Book a Journal Entry row that Payment Reconciliation linked to a payment term
+	of an invoice into `tabPayment Schedule`, or reverse it when `cancel` is set.
+
+	Payment Entry references are booked by `PaymentEntry.update_payment_schedule()`.
+
+	The row's amount is in the party account's currency and is converted with the
+	row's exchange rate when the invoice is in another currency, because Payment
+	Schedule is kept in the invoice's transaction currency.
+	"""
+	invoice_type, invoice_name, payment_term = row.reference_type, row.reference_name, row.payment_term
+	if not payment_term or invoice_type not in ("Sales Invoice", "Purchase Invoice"):
+		return
+
+	invoice = frappe.db.get_value(
+		invoice_type, invoice_name, ["currency", "conversion_rate"], as_dict=True
+	)
+	if not invoice:
+		return
+
+	amount = max(flt(row.debit_in_account_currency), flt(row.credit_in_account_currency))
+	if row.account_currency and row.account_currency != invoice.currency:
+		amount = amount * flt(row.exchange_rate or 1) / flt(invoice.conversion_rate or 1)
+
+	# Rounding also drops the float residue the allocator can leave behind
+	precision = frappe.get_precision("Payment Schedule", "outstanding")
+	amount = flt(amount, precision)
+	if not amount:
+		return
+
+	ps = qb.DocType("Payment Schedule")
+	term_row = (
+		(ps.parent == invoice_name) & (ps.parenttype == invoice_type) & (ps.payment_term == payment_term)
+	)
+
+	if not cancel:
+		outstanding = qb.from_(ps).select(ps.outstanding).where(term_row).run()
+		if not outstanding:
+			throw(_("Payment term {0} not used in {1}").format(payment_term, invoice_name))
+
+		outstanding = flt(outstanding[0][0], precision)
+		if amount > outstanding:
+			throw(
+				_("Cannot allocate more than {0} against payment term {1} of {2}").format(
+					frappe.format_value(outstanding, {"fieldtype": "Currency"}, currency=invoice.currency),
+					payment_term,
+					invoice_name,
+				)
+			)
+
+	change = -amount if cancel else amount
+	(
+		qb.update(ps)
+		.set(ps.paid_amount, ps.paid_amount + change)
+		.set(ps.outstanding, ps.outstanding - change)
+		.where(term_row)
+		.run()
+	)
+
+
 def reconcile_against_document(args, skip_ref_details_update_for_pe=False):  # nosemgrep
 	"""
 	Cancel PE or JV, Update against document, split if required and resubmit
@@ -563,6 +625,7 @@ def reconcile_against_document(args, skip_ref_details_update_for_pe=False):  # n
 		frappe.flags.ignore_party_validation = True
 		_delete_pl_entries(voucher_type, voucher_no)
 
+		new_references = []
 		for entry in entries:
 			check_if_advance_entry_modified(entry)
 			validate_allocated_amount(entry)
@@ -575,12 +638,23 @@ def reconcile_against_document(args, skip_ref_details_update_for_pe=False):  # n
 				# referenced_row is used to deduplicate gain/loss journal
 				entry.update({"referenced_row": referenced_row})
 				doc.make_exchange_gain_loss_journal([entry])
+				update_payment_schedule_for_journal_entry_row(
+					doc.get("accounts", {"name": referenced_row})[0]
+				)
 			else:
-				update_reference_in_payment_entry(
+				new_reference = update_reference_in_payment_entry(
 					entry, doc, do_not_save=True, skip_ref_details_update_for_pe=skip_ref_details_update_for_pe
 				)
+				if new_reference:
+					new_references.append(new_reference)
 
 		doc.save(ignore_permissions=True)
+
+		# A Payment Entry books only its new references into Payment Schedule;
+		# the rest were booked on submit
+		if new_references:
+			doc.update_payment_schedule(references=new_references)
+
 		# re-submit advance entry
 		doc = frappe.get_doc(entry.voucher_type, entry.voucher_no)
 		gl_map = doc.build_gl_map()
@@ -712,6 +786,7 @@ def update_reference_in_journal_entry(d, journal_entry, do_not_save=False):
 
 	new_row.set("reference_type", d["against_voucher_type"])
 	new_row.set("reference_name", d["against_voucher"])
+	new_row.set("payment_term", d.get("payment_term"))
 
 	new_row.against_account = cstr(jv_detail.against_account)
 	new_row.is_advance = cstr(jv_detail.is_advance)
@@ -731,6 +806,7 @@ def update_reference_in_payment_entry(
 	reference_details = {
 		"reference_doctype": d.against_voucher_type,
 		"reference_name": d.against_voucher,
+		"payment_term": d.get("payment_term"),
 		"total_amount": d.grand_total,
 		"outstanding_amount": d.outstanding_amount,
 		"allocated_amount": d.allocated_amount,
@@ -740,6 +816,7 @@ def update_reference_in_payment_entry(
 		"exchange_gain_loss": d.difference_amount,
 	}
 
+	new_row = None
 	if d.voucher_detail_no:
 		existing_row = payment_entry.get("references", {"name": d["voucher_detail_no"]})[0]
 
@@ -775,6 +852,8 @@ def update_reference_in_payment_entry(
 
 	if not do_not_save:
 		payment_entry.save(ignore_permissions=True)
+
+	return new_row
 
 
 def cancel_exchange_gain_loss_journal(
@@ -889,10 +968,36 @@ def remove_ref_doc_link_from_jv(
 	linked_jv = [x for x in linked_jv if x == payment_name] if payment_name else linked_jv
 
 	if linked_jv:
+		# Reverse what reconciliation booked against a payment term before the link is lost
+		term_rows_query = (
+			qb.from_(jea)
+			.select(
+				jea.reference_type,
+				jea.reference_name,
+				jea.payment_term,
+				jea.debit_in_account_currency,
+				jea.credit_in_account_currency,
+				jea.account_currency,
+				jea.exchange_rate,
+			)
+			.where(
+				(jea.reference_type == ref_type)
+				& (jea.reference_name == ref_no)
+				& (jea.docstatus == 1)
+				& (jea.payment_term != "")
+			)
+		)
+		if payment_name:
+			term_rows_query = term_rows_query.where(jea.parent == payment_name)
+
+		for row in term_rows_query.run(as_dict=True):
+			update_payment_schedule_for_journal_entry_row(row, cancel=True)
+
 		update_query = (
 			qb.update(jea)
 			.set(jea.reference_type, None)
 			.set(jea.reference_name, None)
+			.set(jea.payment_term, None)
 			.set(jea.modified, now())
 			.set(jea.modified_by, frappe.session.user)
 			.where((jea.reference_type == ref_type) & (jea.reference_name == ref_no))
@@ -932,6 +1037,32 @@ def remove_ref_doc_link_from_pe(
 	linked_pe = [x for x in linked_pe if x == payment_name] if payment_name else linked_pe
 
 	if linked_pe:
+		# Rows booked against a payment term, read before their allocation is zeroed
+		# and they are removed
+		term_rows_query = (
+			qb.from_(per)
+			.select(
+				per.parent,
+				per.reference_doctype,
+				per.reference_name,
+				per.payment_term,
+				per.allocated_amount,
+				per.total_amount,
+			)
+			.where(
+				(per.reference_doctype == ref_type)
+				& (per.reference_name == ref_no)
+				& (per.docstatus == 1)
+				& (per.payment_term != "")
+			)
+		)
+		if payment_name:
+			term_rows_query = term_rows_query.where(per.parent == payment_name)
+
+		term_rows = {}
+		for row in term_rows_query.run(as_dict=True):
+			term_rows.setdefault(row.parent, []).append(row)
+
 		update_query = (
 			qb.update(per)
 			.set(per.allocated_amount, 0)
@@ -950,6 +1081,8 @@ def remove_ref_doc_link_from_pe(
 		for pe in linked_pe:
 			try:
 				pe_doc = frappe.get_doc("Payment Entry", pe)
+				# pop, as linked_pe repeats a payment entry once per reference row
+				pe_doc.update_payment_schedule(cancel=1, references=term_rows.pop(pe, []))
 				pe_doc.set_amounts()
 				pe_doc.clear_unallocated_reference_document_rows()
 				pe_doc.validate_payment_type_with_outstanding()

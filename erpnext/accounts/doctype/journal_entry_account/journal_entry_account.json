@@ -33,6 +33,7 @@
   "reference",
   "reference_type",
   "reference_name",
+  "payment_term",
   "reference_due_date",
   "reference_detail_no",
   "col_break3",
@@ -226,6 +227,15 @@
    "search_index": 1
   },
   {
+   "fieldname": "payment_term",
+   "fieldtype": "Link",
+   "hidden": 1,
+   "label": "Payment Term",
+   "no_copy": 1,
+   "options": "Payment Term",
+   "read_only": 1
+  },
+  {
    "depends_on": "eval:doc.reference_type&&!in_list(doc.reference_type, ['Expense Claim', 'Asset', 'Employee Loan', 'Employee Advance'])",
    "fieldname": "reference_due_date",
    "fieldtype": "Date",
@@ -297,7 +307,7 @@
  "idx": 1,
  "istable": 1,
  "links": [],
- "modified": "2023-11-23 11:44:25.841187",
+ "modified": "2026-10-06 10:01:31.790549",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Journal Entry Account",
