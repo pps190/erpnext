@@ -11,6 +11,7 @@
   "column_break_3",
   "invoice_type",
   "invoice_number",
+  "payment_term",
   "section_break_6",
   "allocated_amount",
   "unreconciled_amount",
@@ -35,6 +36,14 @@
    "options": "invoice_type",
    "read_only": 1,
    "reqd": 1
+  },
+  {
+   "fieldname": "payment_term",
+   "fieldtype": "Link",
+   "in_list_view": 1,
+   "label": "Payment Term",
+   "options": "Payment Term",
+   "read_only": 1
   },
   {
    "fieldname": "allocated_amount",
@@ -162,7 +171,7 @@
  "is_virtual": 1,
  "istable": 1,
  "links": [],
- "modified": "2023-11-17 17:33:38.612615",
+ "modified": "2026-10-06 10:01:11.105559",
  "modified_by": "Administrator",
  "module": "Accounts",
  "name": "Payment Reconciliation Allocation",
