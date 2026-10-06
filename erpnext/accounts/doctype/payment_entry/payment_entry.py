@@ -1408,6 +1408,33 @@ def validate_inclusive_tax(tax, doc):
 			frappe.throw(_("Valuation type charges can not be marked as Inclusive"))
 
 
+def round_outstanding_and_set_discount(data, discount_amount):
+	"""
+	Round the reference outstandings and put the rounded "MONTHLY 2%" discount on
+	the first reference.
+
+	That discount is `(total - credits) / 1.13 * 0.02` and is unrounded (e.g.
+	62.632212389). The Payment Entry form uses it as-is for the deduction and
+	spreads paid amount + deduction across the references, so the last invoice
+	gets an unrounded allocation. The GL rounds it, the Payment Ledger doesn't,
+	and the leftover fractions later hide 0.01 balances from AR.
+
+	Those fractions also left references with outstandings like -0.0048 that
+	round to 0; offering them lets the form allocate fractions again, so they
+	are dropped.
+	"""
+	precision = frappe.get_precision("Sales Invoice", "outstanding_amount") or 2
+	for d in data:
+		d["outstanding_amount"] = flt(d.get("outstanding_amount"), precision)
+	data = [d for d in data if d["outstanding_amount"]]
+
+	if data and discount_amount:
+		data[0]["discount_amount"] = flt(
+			discount_amount, frappe.get_precision("Payment Entry Deduction", "amount")
+		)
+	return data
+
+
 @frappe.whitelist()
 def get_outstanding_reference_documents(args):
 	if isinstance(args, str):
@@ -1590,8 +1617,7 @@ def get_outstanding_reference_documents(args):
 		discount_amount = total * discount_percent
 		total_discount_amount = grand_total - (grand_total - discount_amount)
 
-	if data and total_discount_amount:
-		data[0]["discount_amount"] = total_discount_amount
+	data = round_outstanding_and_set_discount(data, total_discount_amount)
 
 	if not data:
 		if args.get("get_outstanding_invoices") and args.get("get_orders_to_be_billed"):

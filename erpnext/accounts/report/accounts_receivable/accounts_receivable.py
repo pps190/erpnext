@@ -224,12 +224,21 @@ class ReceivablePayableReport(object):
 		if not row:
 			return
 
+		amount_in_account_currency = ple.amount_in_account_currency
+		# For a party account in company currency both columns must agree, but some
+		# Payment Entry allocations were stored unrounded (e.g. 5.4534 / 0.0036) while
+		# `amount` is GL-rounded. Summing the unrounded side can net an invoice to 0
+		# that still has 0.01 open in the GL, so trust the rounded company amount.
+		if ple.account_currency == self.company_currency:
+			amount_in_account_currency = ple.amount
+
 		# amount in "Party Currency", if its supplied. If not, amount in company currency
-		if self.filters.get("party_type") and self.filters.get("party"):
-			amount = ple.amount_in_account_currency
+		if (self.filters.get("party_type") and self.filters.get("party")) or self.filters.get(
+			"party_account"
+		):
+			amount = amount_in_account_currency
 		else:
 			amount = ple.amount
-		amount_in_account_currency = ple.amount_in_account_currency
 
 		# update voucher
 		if ple.amount > 0:
@@ -292,8 +301,11 @@ class ReceivablePayableReport(object):
 				):
 					must_consider = True
 			else:
-				if (abs(row.outstanding) > 1.0 / 10**self.currency_precision) and (
-					(abs(row.outstanding_in_account_currency) > 1.0 / 10**self.currency_precision)
+				# `abs(outstanding) > 1.0 / 10**precision` also hid rows with exactly one
+				# unit of the smallest denomination (e.g. 0.01). Those balances are still
+				# in the GL, so keep them and drop only true zeros.
+				if flt(row.outstanding, self.currency_precision) and (
+					flt(row.outstanding_in_account_currency, self.currency_precision)
 					or (row.voucher_no in self.err_journals)
 				):
 					must_consider = True
@@ -613,6 +625,18 @@ class ReceivablePayableReport(object):
 				& (jea.party_type.isin(self.party_type))
 				& (jea.reference_name.isnotnull())
 				& (jea.reference_name != "")
+				# An "Exchange Gain Or Loss" JE is a company-currency-only revaluation:
+				# its party line carries the FX delta in `debit`/`credit` but leaves
+				# both account-currency columns at 0. It is not a future payment, and
+				# with the `!= 0` gate below the no-party branch would otherwise
+				# surface its round-off as a pending payment.
+				& (je.voucher_type != "Exchange Gain Or Loss")
+			)
+			# without a GROUP BY the Sum() collapses every future JE line into a
+			# single row attributed to an arbitrary invoice
+			.groupby(
+				jea.reference_type,
+				jea.reference_name,
 			)
 		)
 
@@ -630,7 +654,9 @@ class ReceivablePayableReport(object):
 				Sum(jea.debit if self.account_type == "Payable" else jea.credit).as_("future_amount")
 			)
 
-		query = query.having(qb.Field("future_amount") > 0)
+		# `> 0` dropped every return's settling JE line, both sides of a return are
+		# negative. `!= 0` keeps returns while still dropping true zeros.
+		query = query.having(qb.Field("future_amount") != 0)
 		return query.run(as_dict=True)
 
 	def allocate_future_payments(self, row):
@@ -643,15 +669,35 @@ class ReceivablePayableReport(object):
 		row.remaining_balance = row.outstanding
 		row.future_amount = 0.0
 		for future in self.future_payments.get((row.voucher_no, row.party), []):
-			if row.remaining_balance != 0 and future.future_amount:
-				if future.future_amount > row.outstanding:
+			if not future.future_amount:
+				continue
+			# Only a future amount pointing the same way as `outstanding` can settle
+			# it; an opposite-signed one would inflate the balance rather than reduce it.
+			if (future.future_amount > 0) != (row.outstanding > 0):
+				continue
+			if row.remaining_balance != 0:
+				# Compare magnitudes: for a return both `outstanding` and the future
+				# amount are negative, and a direct comparison picks the wrong branch
+				# (e.g. -484.17 > -515.00 is True).
+				#
+				# Allocations can be stored with more than currency precision (e.g.
+				# 80.457787611 against 80.46), and float sums like 113.99 + 102.68 don't
+				# equal 216.67 exactly. Left unrounded, the residue keeps a settled row
+				# on the statement at 0.00, so round the same way `outstanding` is.
+				if abs(future.future_amount) > abs(row.outstanding):
+					future.future_amount = flt(
+						future.future_amount - row.outstanding, self.currency_precision
+					)
 					row.future_amount = row.outstanding
-					future.future_amount = future.future_amount - row.outstanding
 					row.remaining_balance = 0
 				else:
-					row.future_amount += future.future_amount
+					row.future_amount = flt(
+						row.future_amount + future.future_amount, self.currency_precision
+					)
 					future.future_amount = 0
-					row.remaining_balance = row.outstanding - row.future_amount
+					row.remaining_balance = flt(
+						row.outstanding - row.future_amount, self.currency_precision
+					)
 
 				row.setdefault("future_ref", []).append(
 					cstr(future.future_ref) + "/" + cstr(future.future_date)
