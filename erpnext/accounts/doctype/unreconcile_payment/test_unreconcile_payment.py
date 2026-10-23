@@ -314,3 +314,66 @@ class TestUnreconcilePayment(AccountsTestMixin, FrappeTestCase):
 			),
 			1,
 		)
+
+	def test_05_unreconcile_single_row_of_multi_row_journal(self):
+		"""
+		Scenario: one Journal Entry with two rows against the same invoice (pps190/erpnext#52)
+		Unreconcile only one of the rows
+		"""
+		from erpnext.accounts.doctype.unreconcile_payment.unreconcile_payment import (
+			create_unreconcile_doc_for_selection,
+			get_linked_payments_for_doc,
+		)
+
+		si = self.create_sales_invoice()
+		je = frappe.new_doc("Journal Entry")
+		je.company = self.company
+		je.posting_date = today()
+		for amount in (40, 60):
+			je.append(
+				"accounts",
+				{
+					"account": self.debit_to,
+					"party_type": "Customer",
+					"party": self.customer,
+					"credit_in_account_currency": amount,
+					"reference_type": si.doctype,
+					"reference_name": si.name,
+					"cost_center": self.cost_center,
+				},
+			)
+		je.append(
+			"accounts",
+			{"account": self.cash, "debit_in_account_currency": 100, "cost_center": self.cost_center},
+		)
+		je.save().submit()
+		si.reload()
+		self.assertEqual(si.outstanding_amount, 0)
+
+		# Dialog lists each row on its own
+		lines = get_linked_payments_for_doc(self.company, si.doctype, si.name)
+		self.assertEqual(sorted(x.allocated_amount for x in lines), [40, 60])
+		row_40 = next(x for x in lines if x.allocated_amount == 40)
+
+		create_unreconcile_doc_for_selection(
+			frappe.as_json(
+				[
+					{
+						"company": self.company,
+						"voucher_type": je.doctype,
+						"voucher_no": je.name,
+						"voucher_detail_no": row_40.voucher_detail_no,
+						"against_voucher_type": si.doctype,
+						"against_voucher_no": si.name,
+					}
+				]
+			)
+		)
+
+		si.reload()
+		je.reload()
+		self.assertEqual(si.outstanding_amount, 40)
+		linked = [x.credit_in_account_currency for x in je.accounts if x.reference_name == si.name]
+		self.assertEqual(linked, [60])
+		lines = get_linked_payments_for_doc(self.company, si.doctype, si.name)
+		self.assertEqual([x.allocated_amount for x in lines], [60])

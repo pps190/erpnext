@@ -36,6 +36,7 @@ erpnext.accounts.unreconcile_payment = {
 					company: elem.company,
 					voucher_type: elem.voucher_type,
 					voucher_no: elem.voucher_no,
+					voucher_detail_no: elem.voucher_detail_no,
 					against_voucher_type: frm.doc.doctype,
 					against_voucher_no: frm.doc.name
 				};
@@ -46,6 +47,7 @@ erpnext.accounts.unreconcile_payment = {
 					company: elem.company,
 					voucher_type: frm.doc.doctype,
 					voucher_no: frm.doc.name,
+					voucher_detail_no: elem.voucher_detail_no,
 					against_voucher_type: elem.voucher_type,
 					against_voucher_no: elem.voucher_no,
 				};
@@ -59,6 +61,8 @@ erpnext.accounts.unreconcile_payment = {
 			let child_table_fields = [
 				{ label: __("Voucher Type"), fieldname: "voucher_type", fieldtype: "Dynamic Link", options: "DocType", in_list_view: 1, read_only: 1},
 				{ label: __("Voucher No"), fieldname: "voucher_no", fieldtype: "Link", options: "voucher_type", in_list_view: 1, read_only: 1 },
+				// one line per allocation row, so a single allocation can be unreconciled on its own
+				{ label: __("Allocation Row"), fieldname: "voucher_detail_no", fieldtype: "Data", in_list_view: 1, read_only: 1 },
 				{ label: __("Allocated Amount"), fieldname: "allocated_amount", fieldtype: "Currency", in_list_view: 1, read_only: 1 , options: "account_currency"},
 				{ label: __("Currency"), fieldname: "account_currency", fieldtype: "Currency", read_only: 1},
 			]
@@ -97,7 +101,7 @@ erpnext.accounts.unreconcile_payment = {
 								let selected_allocations = values.allocations.filter(x=>x.__checked);
 								if (selected_allocations.length > 0) {
 									let selection_map = erpnext.accounts.unreconcile_payment.build_selection_map(frm, selected_allocations);
-									erpnext.accounts.unreconcile_payment.create_unreconcile_docs(selection_map);
+									erpnext.accounts.unreconcile_payment.create_unreconcile_docs(selection_map, frm);
 									d.hide();
 
 								} else {
@@ -113,12 +117,17 @@ erpnext.accounts.unreconcile_payment = {
 		}
 	},
 
-	create_unreconcile_docs(selection_map) {
+	create_unreconcile_docs(selection_map, frm) {
 		frappe.call({
 			"method": "erpnext.accounts.doctype.unreconcile_payment.unreconcile_payment.create_unreconcile_doc_for_selection",
 			"args": {
 				"selections": selection_map
 			},
+			callback: function(r) {
+				if (!r.exc && frm) {
+					frm.reload_doc();
+				}
+			}
 		});
 	}
 
